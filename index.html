@@ -38,6 +38,12 @@
         margin: 0 0 10px 0;
       }
 
+      #pattern-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
       .pattern-btn {
         padding: 10px 20px;
         font-size: 14px;
@@ -66,6 +72,17 @@
         color: #4caf50;
       }
 
+      #rotation-controls {
+        display: flex;
+        gap: 10px;
+      }
+
+      #rotation-controls button {
+        padding: 8px 16px;
+        font-size: 20px;
+        margin: 0;
+      }
+
       #controls {
         margin-top: 20px;
       }
@@ -84,18 +101,27 @@
       <!-- Left sidebar: Pattern buttons -->
       <div id="sidebar">
         <h3>Patterns:</h3>
-        <button class="pattern-btn" data-pattern="0">Glider</button>
-        <button class="pattern-btn" data-pattern="1">Block</button>
-        <button class="pattern-btn" data-pattern="2">Blinker</button>
-        <button class="pattern-btn" data-pattern="3">Toad</button>
-        <button class="pattern-btn" data-pattern="4">Beacon</button>
+        <div id="pattern-list">
+          <button class="pattern-btn" data-pattern="0">Glider</button>
+          <button class="pattern-btn" data-pattern="1">LWSS</button>
+          <button class="pattern-btn" data-pattern="2">MWSS</button>
+          <button class="pattern-btn" data-pattern="3">Block</button>
+          <button class="pattern-btn" data-pattern="4">Beehive</button>
+          <button class="pattern-btn" data-pattern="5">Boat</button>
+          <button class="pattern-btn" data-pattern="6">Blinker</button>
+          <button class="pattern-btn" data-pattern="7">Toad</button>
+          <button class="pattern-btn" data-pattern="8">Beacon</button>
+        </div>
       </div>
-
       <!-- Preview canvas -->
       <div id="preview-container">
         <h3>Preview:</h3>
         <canvas id="previewCanvas" width="100" height="100"></canvas>
         <p id="preview-name">None</p>
+        <div id="rotation-controls">
+          <button id="rotateLeft">⟲</button>
+          <button id="rotateRight">⟳</button>
+        </div>
       </div>
 
       <!-- Main game canvas -->

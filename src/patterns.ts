@@ -5,6 +5,7 @@ export interface Pattern {
 }
 
 export const PATTERNS: Pattern[] = [
+  // Spaceships
   {
     name: "Glider",
     cells: [
@@ -16,6 +17,37 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
+    name: "LWSS",
+    cells: [
+      [0, 1],
+      [0, 2],
+      [0, 3],
+      [0, 4],
+      [1, 0],
+      [1, 4],
+      [2, 4],
+      [3, 0],
+      [3, 3],
+    ],
+  },
+  {
+    name: "MWSS",
+    cells: [
+      [0, 2],
+      [1, 0],
+      [1, 4],
+      [2, 5],
+      [3, 0],
+      [3, 5],
+      [4, 1],
+      [4, 2],
+      [4, 3],
+      [4, 4],
+      [4, 5],
+    ],
+  },
+  // Still Lifes
+  {
     name: "Block",
     cells: [
       [0, 0],
@@ -24,6 +56,28 @@ export const PATTERNS: Pattern[] = [
       [1, 1],
     ],
   },
+  {
+    name: "Beehive",
+    cells: [
+      [0, 1],
+      [0, 2],
+      [1, 0],
+      [1, 3],
+      [2, 1],
+      [2, 2],
+    ],
+  },
+  {
+    name: "Boat",
+    cells: [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 2],
+      [2, 1],
+    ],
+  },
+  // Oscillators
   {
     name: "Blinker",
     cells: [
