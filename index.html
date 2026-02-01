@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pattern Clash</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: Arial, sans-serif;
+        background-color: #1a1a1a;
+        color: white;
+      }
+      canvas {
+        border: 2px solid #444;
+        background-color: #000;
+        cursor: crosshair;
+      }
+      #controls {
+        margin-top: 20px;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 0 5px;
+        font-size: 16px;
+      }
+      #patterns {
+        margin-top: 20px;
+      }
+      #patterns h3 {
+        margin-bottom: 10px;
+      }
+      .pattern-btn {
+        padding: 8px 16px;
+        margin: 0 5px;
+      }
+      .pattern-btn.active {
+        background-color: #4caf50;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Pattern Clash</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="controls">
+      <button id="startBtn">Start</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div id="patterns">
+      <h3>Select Pattern:</h3>
+      <button class="pattern-btn" data-pattern="0">Glider</button>
+      <button class="pattern-btn" data-pattern="1">Block</button>
+      <button class="pattern-btn" data-pattern="2">Blinker</button>
+      <button class="pattern-btn" data-pattern="3">Toad</button>
+      <button class="pattern-btn" data-pattern="4">Beacon</button>
+    </div>
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>
