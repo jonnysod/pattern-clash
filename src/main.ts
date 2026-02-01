@@ -9,6 +9,16 @@ const COLS = canvas.width / CELL_SIZE;
 const ROWS = canvas.height / CELL_SIZE;
 //#endregion
 
+//#region Preview Canvas Setup
+const previewCanvas = document.getElementById('previewCanvas') as HTMLCanvasElement;
+const previewCtx = previewCanvas.getContext('2d')!;
+const previewName = document.getElementById('preview-name')!;
+
+const PREVIEW_CELL_SIZE = 10;
+const PREVIEW_COLS = previewCanvas.width / PREVIEW_CELL_SIZE;
+const PREVIEW_ROWS = previewCanvas.height / PREVIEW_CELL_SIZE;
+//#endregion
+
 //#region Grid State
 let grid: boolean[][] = createEmptyGrid();
 let isRunning = false;
@@ -47,6 +57,59 @@ function drawGrid(): void {
         ctx.lineTo(i * CELL_SIZE, canvas.height);
         ctx.stroke();
     }
+}
+//#endregion
+
+//#region Preview Rendering
+function drawPreview(pattern: Pattern | null): void {
+    // Clear preview
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    
+    // Draw grid lines
+    previewCtx.strokeStyle = '#222';
+    for (let i = 0; i <= PREVIEW_ROWS; i++) {
+        previewCtx.beginPath();
+        previewCtx.moveTo(0, i * PREVIEW_CELL_SIZE);
+        previewCtx.lineTo(previewCanvas.width, i * PREVIEW_CELL_SIZE);
+        previewCtx.stroke();
+    }
+    for (let i = 0; i <= PREVIEW_COLS; i++) {
+        previewCtx.beginPath();
+        previewCtx.moveTo(i * PREVIEW_CELL_SIZE, 0);
+        previewCtx.lineTo(i * PREVIEW_CELL_SIZE, previewCanvas.height);
+        previewCtx.stroke();
+    }
+    
+    if (!pattern) {
+        previewName.textContent = 'None';
+        return;
+    }
+    
+    // Calculate pattern bounds for centering
+    const rows = pattern.cells.map(([r]) => r);
+    const cols = pattern.cells.map(([, c]) => c);
+    const patternHeight = Math.max(...rows) - Math.min(...rows) + 1;
+    const patternWidth = Math.max(...cols) - Math.min(...cols) + 1;
+    
+    // Center the pattern
+    const offsetRow = Math.floor((PREVIEW_ROWS - patternHeight) / 2) - Math.min(...rows);
+    const offsetCol = Math.floor((PREVIEW_COLS - patternWidth) / 2) - Math.min(...cols);
+    
+    // Draw pattern cells
+    previewCtx.fillStyle = '#00ff00';
+    for (const [row, col] of pattern.cells) {
+        const drawRow = row + offsetRow;
+        const drawCol = col + offsetCol;
+        previewCtx.fillRect(
+            drawCol * PREVIEW_CELL_SIZE,
+            drawRow * PREVIEW_CELL_SIZE,
+            PREVIEW_CELL_SIZE - 1,
+            PREVIEW_CELL_SIZE - 1
+        );
+    }
+    
+    // Update name
+    previewName.textContent = pattern.name;
 }
 //#endregion
 
@@ -170,21 +233,21 @@ document.getElementById('resetBtn')!.addEventListener('click', () => {
 // Pattern selection handlers
 document.querySelectorAll('.pattern-btn').forEach((btn, index) => {
     btn.addEventListener('click', () => {
-        // Remove active class from all buttons
-        document.querySelectorAll('.pattern-btn').forEach(b => b.classList.remove('active'));
-        
         // Toggle selection
         if (selectedPattern === PATTERNS[index]) {
-            selectedPattern = null; // Deselect
+            selectedPattern = null;
         } else {
             selectedPattern = PATTERNS[index]!;
-            btn.classList.add('active'); // Mark as active
         }
+        
+        // Update preview
+        drawPreview(selectedPattern);
     });
 });
 //#endregion
 
 //#region Initialization
 drawGrid();
+drawPreview(null); // Initialize empty preview
 console.log('Pattern Clash - Ready!');
 //#endregion

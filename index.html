@@ -15,51 +15,100 @@
         background-color: #1a1a1a;
         color: white;
       }
+      h1 {
+        margin-bottom: 20px;
+      }
+
       canvas {
         border: 2px solid #444;
         background-color: #000;
+      }
+
+      #gameCanvas {
         cursor: crosshair;
       }
+
+      #sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      #sidebar h3 {
+        margin: 0 0 10px 0;
+      }
+
+      .pattern-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+        min-width: 100px;
+        text-align: left;
+      }
+
+      #preview-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+
+      #preview-container h3 {
+        margin: 0;
+      }
+
+      #previewCanvas {
+        border: 2px solid #666;
+      }
+
+      #preview-name {
+        margin: 0;
+        font-weight: bold;
+        color: #4caf50;
+      }
+
       #controls {
         margin-top: 20px;
       }
+
       button {
         padding: 10px 20px;
         margin: 0 5px;
         font-size: 16px;
       }
-      #patterns {
-        margin-top: 20px;
-      }
-      #patterns h3 {
-        margin-bottom: 10px;
-      }
-      .pattern-btn {
-        padding: 8px 16px;
-        margin: 0 5px;
-      }
-      .pattern-btn.active {
-        background-color: #4caf50;
-        color: white;
-      }
     </style>
   </head>
   <body>
     <h1>Pattern Clash</h1>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="controls">
-      <button id="startBtn">Start</button>
-      <button id="pauseBtn">Pause</button>
-      <button id="resetBtn">Reset</button>
+
+    <div style="display: flex; gap: 20px; align-items: flex-start">
+      <!-- Left sidebar: Pattern buttons -->
+      <div id="sidebar">
+        <h3>Patterns:</h3>
+        <button class="pattern-btn" data-pattern="0">Glider</button>
+        <button class="pattern-btn" data-pattern="1">Block</button>
+        <button class="pattern-btn" data-pattern="2">Blinker</button>
+        <button class="pattern-btn" data-pattern="3">Toad</button>
+        <button class="pattern-btn" data-pattern="4">Beacon</button>
+      </div>
+
+      <!-- Preview canvas -->
+      <div id="preview-container">
+        <h3>Preview:</h3>
+        <canvas id="previewCanvas" width="100" height="100"></canvas>
+        <p id="preview-name">None</p>
+      </div>
+
+      <!-- Main game canvas -->
+      <div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="controls">
+          <button id="startBtn">Start</button>
+          <button id="pauseBtn">Pause</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+      </div>
     </div>
-    <div id="patterns">
-      <h3>Select Pattern:</h3>
-      <button class="pattern-btn" data-pattern="0">Glider</button>
-      <button class="pattern-btn" data-pattern="1">Block</button>
-      <button class="pattern-btn" data-pattern="2">Blinker</button>
-      <button class="pattern-btn" data-pattern="3">Toad</button>
-      <button class="pattern-btn" data-pattern="4">Beacon</button>
-    </div>
+
     <script type="module" src="./dist/main.js"></script>
   </body>
 </html>
