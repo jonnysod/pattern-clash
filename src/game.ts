@@ -11,6 +11,10 @@ export class Game {
   grid: boolean[][];
   isRunning: boolean = false;
 
+  // Score
+  scorePlayer1: number = 0;
+  scorePlayer2: number = 0;
+
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
@@ -27,6 +31,8 @@ export class Game {
   reset(): void {
     this.grid = this.createEmptyGrid();
     this.isRunning = false;
+    this.scorePlayer1 = 0;
+    this.scorePlayer2 = 0;
   }
 
   computeNextGeneration(): void {
@@ -42,6 +48,13 @@ export class Game {
           newGrid[row]![col] = true; // Survives
         } else if (!isAlive && neighbors === 3) {
           newGrid[row]![col] = true; // Birth
+
+          // Count score
+          if (col === this.zones.scoreColumnLeft) {
+            this.scorePlayer2++; // Birth in left score-col
+          } else if (col === this.zones.scoreColumnRight) {
+            this.scorePlayer1++; //  Birth in right score-col
+          }
         } else {
           newGrid[row]![col] = false; // Dies or stays dead
         }

@@ -213,8 +213,18 @@ export class UIController {
     this.game.computeNextGeneration();
     this.renderer.drawGrid();
 
+    // Update score display
+    this.updateScoreDisplay();
+
     setTimeout(() => {
       this.animationId = requestAnimationFrame(this.animate);
     }, 100); // 100ms between generations = ~10 FPS
   };
+
+  private updateScoreDisplay(): void {
+    document.getElementById("score1")!.textContent =
+      this.game.scorePlayer1.toString();
+    document.getElementById("score2")!.textContent =
+      this.game.scorePlayer2.toString();
+  }
 }

@@ -7,10 +7,27 @@ export class Zones {
   readonly leftEnd: number;
   readonly rightStart: number;
 
+  // Endzonen (NEU)
+  readonly endzoneWidth: number = 4;
+  readonly endzoneLeftStart: number = 0;
+  readonly endzoneLeftEnd: number;
+  readonly endzoneRightStart: number;
+  readonly endzoneRightEnd: number;
+  readonly scoreColumnLeft: number = 3; // Score column at edge of left endzone
+  readonly scoreColumnRight: number; // Punkt-Spalte rechts (Spieler 1)
+
   constructor(cols: number) {
     this.cols = cols;
-    this.leftEnd = Math.floor(cols * 0.25); // Linke 25%
-    this.rightStart = Math.floor(cols * 0.75); // Rechte 25%
+    this.endzoneLeftEnd = this.endzoneWidth;
+    this.endzoneRightStart = cols - this.endzoneWidth;
+    this.endzoneRightEnd = cols;
+    this.scoreColumnRight = cols - 4; // Score column at edge of right endzone
+
+    // Placement zones adjusted for endzones
+    this.leftEnd =
+      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.25);
+    this.rightStart =
+      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.75);
   }
 
   isValidPlacement(col: number, player: Player): boolean {
