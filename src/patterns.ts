@@ -1,8 +1,5 @@
 // Pattern definitions (relative coordinates)
-export interface Pattern {
-  name: string;
-  cells: [number, number][]; // [row, col] offsets
-}
+import type { Pattern } from "./types.js";
 
 export const PATTERNS: Pattern[] = [
   // Spaceships
