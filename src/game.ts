@@ -3,6 +3,8 @@
 import type { Pattern, Player } from "./types.js";
 import { Zones } from "./zones.js";
 
+const INITIAL_BUDGET = 49;
+
 export class Game {
   readonly rows: number;
   readonly cols: number;
@@ -16,14 +18,15 @@ export class Game {
   scorePlayer2: number = 0;
 
   // Budget system
-  budgetPlayer1: number = 100;
-  budgetPlayer2: number = 100;
+  budgetPlayer1: number = INITIAL_BUDGET;
+  budgetPlayer2: number = INITIAL_BUDGET;
 
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
     this.zones = new Zones(cols);
     this.grid = this.createEmptyGrid();
+    this.resetBudget();
   }
 
   private createEmptyGrid(): boolean[][] {
@@ -37,8 +40,12 @@ export class Game {
     this.isRunning = false;
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
-    this.budgetPlayer1 = 100;
-    this.budgetPlayer2 = 100;
+    this.resetBudget();
+  }
+
+  private resetBudget(): void {
+    this.budgetPlayer1 = INITIAL_BUDGET;
+    this.budgetPlayer2 = INITIAL_BUDGET;
   }
 
   computeNextGeneration(): void {
