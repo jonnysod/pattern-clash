@@ -39,9 +39,26 @@ export class Renderer {
       this.canvas.height,
     );
 
+    // Highlight score columns
+    this.ctx.fillStyle = "#443300"; // Dark yellow
+    // Left score column (column 3)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnLeft * this.cellSize,
+      0,
+      this.cellSize,
+      this.canvas.height,
+    );
+    // Right score column (column 76)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnRight * this.cellSize,
+      0,
+      this.cellSize,
+      this.canvas.height,
+    );
+
     // Draw zone backgrounds
-    // Left zone (Player 1) - Blueish
-    this.ctx.fillStyle = "#001a33";
+    // Left zone (Player 1) - Dark cyan
+    this.ctx.fillStyle = "#003333";
     this.ctx.fillRect(
       this.game.zones.endzoneLeftEnd * this.cellSize, // starts after endzone
       0,
@@ -59,8 +76,8 @@ export class Renderer {
       this.canvas.height,
     );
 
-    // Right zone (Player 2) - Reddish
-    this.ctx.fillStyle = "#330000";
+    // Right zone (Player 2) - Dark magenta
+    this.ctx.fillStyle = "#330033";
     this.ctx.fillRect(
       this.game.zones.rightStart * this.cellSize,
       0,
