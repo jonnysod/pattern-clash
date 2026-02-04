@@ -15,6 +15,10 @@ export class Game {
   scorePlayer1: number = 0;
   scorePlayer2: number = 0;
 
+  // Budget system
+  budgetPlayer1: number = 100;
+  budgetPlayer2: number = 100;
+
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
@@ -33,6 +37,8 @@ export class Game {
     this.isRunning = false;
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
+    this.budgetPlayer1 = 100;
+    this.budgetPlayer2 = 100;
   }
 
   computeNextGeneration(): void {
@@ -97,11 +103,21 @@ export class Game {
     pattern: Pattern,
     player: Player,
   ): boolean {
-    // Validiere, ob Pattern in erlaubter Zone platziert wird
+    // Check zone validation
     if (!this.zones.isValidPlacement(startCol, player)) {
       return false;
     }
 
+    // Check budget
+    const patternCost = pattern.cells.length;
+    const currentBudget =
+      player === 1 ? this.budgetPlayer1 : this.budgetPlayer2;
+
+    if (currentBudget < patternCost) {
+      return false; // Not enough budget
+    }
+
+    // Place pattern
     for (const [rowOffset, colOffset] of pattern.cells) {
       const row = startRow + rowOffset;
       const col = startCol + colOffset;
@@ -110,6 +126,14 @@ export class Game {
         this.grid[row]![col] = true;
       }
     }
+
+    // Deduct budget
+    if (player === 1) {
+      this.budgetPlayer1 -= patternCost;
+    } else {
+      this.budgetPlayer2 -= patternCost;
+    }
+
     return true;
   }
 

@@ -13,10 +13,15 @@ export class UIController {
   private previewRenderer2: PreviewRenderer;
   private cellSize: number;
 
-  private currentPlayer: Player = 1;
-  private selectedPattern: Pattern | null = null;
+  private selectedPattern1: Pattern | null = null;
+  private selectedPattern2: Pattern | null = null;
   private currentRotation: number = 0;
   private animationId: number | null = null;
+
+  // Turn-based system
+  private activePlayer: Player = 1;
+  private player1Ready: boolean = false;
+  private player2Ready: boolean = false;
 
   constructor(
     game: Game,
@@ -32,19 +37,28 @@ export class UIController {
     this.cellSize = cellSize;
 
     this.setupEventListeners();
+
+    // Initialize UI
+    this.updateBudgetDisplay();
+    this.updateActivePlayerUI();
   }
 
   private setupEventListeners(): void {
     this.setupCanvasClick();
     this.setupControlButtons();
-    this.setupPlayerButtons();
     this.setupPatternButtons();
     this.setupRotationButtons();
+    this.setupReadyButtons();
   }
 
   private setupCanvasClick(): void {
     const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     canvas.addEventListener("click", (e) => {
+      // Only allow placement if game is not running and it's the player's turn
+      if (this.game.isRunning) {
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -52,26 +66,32 @@ export class UIController {
       const col = Math.floor(x / this.cellSize);
       const row = Math.floor(y / this.cellSize);
 
-      if (this.selectedPattern) {
+      const selectedPattern =
+        this.activePlayer === 1 ? this.selectedPattern1 : this.selectedPattern2;
+
+      if (selectedPattern) {
         // Place rotated and player-specific pattern
         const playerPattern = getPatternForPlayer(
-          this.selectedPattern,
-          this.currentPlayer,
+          selectedPattern,
+          this.activePlayer,
         );
         const rotated = rotatePattern(playerPattern, this.currentRotation);
         const success = this.game.placePattern(
           row,
           col,
           rotated,
-          this.currentPlayer,
+          this.activePlayer,
         );
 
-        if (!success) {
+        if (success) {
+          this.updateBudgetDisplay();
+          this.switchTurn();
+        } else {
           this.renderer.flashInvalidPlacement(col, row);
         }
       } else {
         // Toggle single cell (with zone validation)
-        const success = this.game.toggleCell(row, col, this.currentPlayer);
+        const success = this.game.toggleCell(row, col, this.activePlayer);
         if (!success) {
           this.renderer.flashInvalidPlacement(col, row);
         }
@@ -103,27 +123,6 @@ export class UIController {
     });
   }
 
-  private setupPlayerButtons(): void {
-    const player1Btn = document.getElementById("player1Btn")!;
-    const player2Btn = document.getElementById("player2Btn")!;
-
-    player1Btn.addEventListener("click", () => {
-      this.currentPlayer = 1;
-      player1Btn.style.fontWeight = "bold";
-      player1Btn.style.opacity = "1";
-      player2Btn.style.fontWeight = "normal";
-      player2Btn.style.opacity = "0.6";
-    });
-
-    player2Btn.addEventListener("click", () => {
-      this.currentPlayer = 2;
-      player2Btn.style.fontWeight = "bold";
-      player2Btn.style.opacity = "1";
-      player1Btn.style.fontWeight = "normal";
-      player1Btn.style.opacity = "0.6";
-    });
-  }
-
   private setupPatternButtons(): void {
     const player1Btn = document.getElementById("player1Btn")!;
     const player2Btn = document.getElementById("player2Btn")!;
@@ -131,42 +130,39 @@ export class UIController {
     // Pattern selection handlers für Spieler 1
     document.querySelectorAll(".player1-pattern").forEach((btn) => {
       btn.addEventListener("click", () => {
-        this.currentPlayer = 1;
         player1Btn.style.fontWeight = "bold";
         player1Btn.style.opacity = "1";
         player2Btn.style.fontWeight = "normal";
         player2Btn.style.opacity = "0.6";
 
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
-        if (this.selectedPattern === PATTERNS[patternIndex]) {
-          this.selectedPattern = null;
+        if (this.selectedPattern1 === PATTERNS[patternIndex]) {
+          this.selectedPattern1 = null;
           this.currentRotation = 0;
         } else {
-          this.selectedPattern = PATTERNS[patternIndex]!;
+          this.selectedPattern1 = PATTERNS[patternIndex]!;
           this.currentRotation = 0;
         }
-        this.previewRenderer1.drawPreview(this.selectedPattern, 1);
+        this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
       });
     });
 
     // Pattern selection handlers für Spieler 2
     document.querySelectorAll(".player2-pattern").forEach((btn) => {
       btn.addEventListener("click", () => {
-        this.currentPlayer = 2;
-        player2Btn.style.fontWeight = "bold";
         player2Btn.style.opacity = "1";
         player1Btn.style.fontWeight = "normal";
         player1Btn.style.opacity = "0.6";
 
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
-        if (this.selectedPattern === PATTERNS[patternIndex]) {
-          this.selectedPattern = null;
+        if (this.selectedPattern2 === PATTERNS[patternIndex]) {
+          this.selectedPattern2 = null;
           this.currentRotation = 0;
         } else {
-          this.selectedPattern = PATTERNS[patternIndex]!;
+          this.selectedPattern2 = PATTERNS[patternIndex]!;
           this.currentRotation = 0;
         }
-        this.previewRenderer2.drawPreview(this.selectedPattern, 2);
+        this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
       });
     });
   }
@@ -174,36 +170,60 @@ export class UIController {
   private setupRotationButtons(): void {
     // Rotation button handlers für Spieler 1
     document.getElementById("rotateLeft1")!.addEventListener("click", () => {
-      if (!this.selectedPattern || this.currentPlayer !== 1) return;
+      if (!this.selectedPattern1 || this.activePlayer !== 1) return;
       this.currentRotation = (this.currentRotation - 90 + 360) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern, 1);
+      const playerPattern = getPatternForPlayer(this.selectedPattern1, 1);
       const rotated = rotatePattern(playerPattern, this.currentRotation);
       this.previewRenderer1.drawPreview(rotated, 1);
     });
 
     document.getElementById("rotateRight1")!.addEventListener("click", () => {
-      if (!this.selectedPattern || this.currentPlayer !== 1) return;
+      if (!this.selectedPattern1 || this.activePlayer !== 1) return;
       this.currentRotation = (this.currentRotation + 90) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern, 1);
+      const playerPattern = getPatternForPlayer(this.selectedPattern1, 1);
       const rotated = rotatePattern(playerPattern, this.currentRotation);
       this.previewRenderer1.drawPreview(rotated, 1);
     });
 
     // Rotation button handlers für Spieler 2
     document.getElementById("rotateLeft2")!.addEventListener("click", () => {
-      if (!this.selectedPattern || this.currentPlayer !== 2) return;
+      if (!this.selectedPattern2 || this.activePlayer !== 2) return;
       this.currentRotation = (this.currentRotation - 90 + 360) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern, 2);
+      const playerPattern = getPatternForPlayer(this.selectedPattern2, 2);
       const rotated = rotatePattern(playerPattern, this.currentRotation);
       this.previewRenderer2.drawPreview(rotated, 2);
     });
 
     document.getElementById("rotateRight2")!.addEventListener("click", () => {
-      if (!this.selectedPattern || this.currentPlayer !== 2) return;
+      if (!this.selectedPattern2 || this.activePlayer !== 2) return;
       this.currentRotation = (this.currentRotation + 90) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern, 2);
+      const playerPattern = getPatternForPlayer(this.selectedPattern2, 2);
       const rotated = rotatePattern(playerPattern, this.currentRotation);
       this.previewRenderer2.drawPreview(rotated, 2);
+    });
+  }
+
+  private setupReadyButtons(): void {
+    document.getElementById("ready1Btn")!.addEventListener("click", () => {
+      if (this.game.isRunning) return;
+
+      this.player1Ready = true;
+      const btn = document.getElementById("ready1Btn")! as HTMLButtonElement;
+      btn.disabled = true;
+      document.getElementById("ready1Btn")!.style.opacity = "0.5";
+
+      this.switchTurn();
+    });
+
+    document.getElementById("ready2Btn")!.addEventListener("click", () => {
+      if (this.game.isRunning) return;
+
+      this.player2Ready = true;
+      const btn = document.getElementById("ready2Btn")! as HTMLButtonElement;
+      btn.disabled = true;
+      document.getElementById("ready2Btn")!.style.opacity = "0.5";
+
+      this.switchTurn();
     });
   }
 
@@ -226,5 +246,108 @@ export class UIController {
       this.game.scorePlayer1.toString();
     document.getElementById("score2")!.textContent =
       this.game.scorePlayer2.toString();
+  }
+
+  private updateBudgetDisplay(): void {
+    document.getElementById("budget1")!.textContent =
+      this.game.budgetPlayer1.toString();
+    document.getElementById("budget2")!.textContent =
+      this.game.budgetPlayer2.toString();
+  }
+
+  private switchTurn(): void {
+    // Switch to other player
+    if (this.activePlayer === 1) {
+      // Check if Player 2 has budget left
+      if (this.game.budgetPlayer2 > 0 && !this.player2Ready) {
+        this.activePlayer = 2;
+      }
+    } else {
+      // Check if Player 1 has budget left
+      if (this.game.budgetPlayer1 > 0 && !this.player1Ready) {
+        this.activePlayer = 1;
+      }
+    }
+
+    this.updateActivePlayerUI();
+    this.checkGameStart();
+  }
+
+  private updateActivePlayerUI(): void {
+    const player1Btn = document.getElementById("player1Btn")!;
+    const player2Btn = document.getElementById("player2Btn")!;
+
+    if (this.activePlayer === 1) {
+      // Player 1 is active
+      player1Btn.style.opacity = "1";
+      player1Btn.style.boxShadow = "0 0 15px #44dddd";
+      player2Btn.style.opacity = "0.5";
+      player2Btn.style.boxShadow = "none";
+
+      this.enablePlayerControls(1);
+      this.disablePlayerControls(2);
+    } else {
+      // Player 2 is active
+      player1Btn.style.opacity = "0.5";
+      player1Btn.style.boxShadow = "none";
+      player2Btn.style.opacity = "1";
+      player2Btn.style.boxShadow = "0 0 15px #dd44dd";
+
+      this.enablePlayerControls(2);
+      this.disablePlayerControls(1);
+    }
+  }
+
+  private enablePlayerControls(player: Player): void {
+    const patterns =
+      player === 1
+        ? document.querySelectorAll(".player1-pattern")
+        : document.querySelectorAll(".player2-pattern");
+    const rotateLeft = document.getElementById(
+      player === 1 ? "rotateLeft1" : "rotateLeft2",
+    )! as HTMLButtonElement;
+    const rotateRight = document.getElementById(
+      player === 1 ? "rotateRight1" : "rotateRight2",
+    )! as HTMLButtonElement;
+
+    patterns.forEach((btn) => {
+      (btn as HTMLButtonElement).disabled = false;
+      (btn as HTMLButtonElement).style.opacity = "1";
+    });
+    rotateLeft.disabled = false;
+    rotateRight.disabled = false;
+  }
+
+  private disablePlayerControls(player: Player): void {
+    const patterns =
+      player === 1
+        ? document.querySelectorAll(".player1-pattern")
+        : document.querySelectorAll(".player2-pattern");
+    const rotateLeft = document.getElementById(
+      player === 1 ? "rotateLeft1" : "rotateLeft2",
+    )! as HTMLButtonElement;
+    const rotateRight = document.getElementById(
+      player === 1 ? "rotateRight1" : "rotateRight2",
+    )! as HTMLButtonElement;
+
+    patterns.forEach((btn) => {
+      (btn as HTMLButtonElement).disabled = true;
+      (btn as HTMLButtonElement).style.opacity = "0.3";
+    });
+    rotateLeft.disabled = true;
+    rotateRight.disabled = true;
+  }
+
+  private checkGameStart(): void {
+    // Start game if both players are ready or out of budget
+    const p1Done = this.player1Ready || this.game.budgetPlayer1 === 0;
+    const p2Done = this.player2Ready || this.game.budgetPlayer2 === 0;
+
+    if (p1Done && p2Done) {
+      this.game.isRunning = true;
+      this.animate();
+      this.disablePlayerControls(1);
+      this.disablePlayerControls(2);
+    }
   }
 }
