@@ -316,6 +316,17 @@ export class UIController {
     });
     rotateLeft.disabled = false;
     rotateRight.disabled = false;
+
+    // Enable ready button if not already clicked
+    const readyBtn = document.getElementById(
+      player === 1 ? "ready1Btn" : "ready2Btn",
+    )! as HTMLButtonElement;
+    const isReady = player === 1 ? this.player1Ready : this.player2Ready;
+
+    if (!isReady) {
+      readyBtn.disabled = false;
+      readyBtn.style.opacity = "1";
+    }
   }
 
   private disablePlayerControls(player: Player): void {
@@ -336,6 +347,18 @@ export class UIController {
     });
     rotateLeft.disabled = true;
     rotateRight.disabled = true;
+
+    // Disable player button (NEU)
+    const playerBtn = document.getElementById(
+      player === 1 ? "player1Btn" : "player2Btn",
+    )! as HTMLButtonElement;
+    playerBtn.disabled = true;
+
+    // Disable ready button (NEU)
+    const readyBtn = document.getElementById(
+      player === 1 ? "ready1Btn" : "ready2Btn",
+    )! as HTMLButtonElement;
+    readyBtn.disabled = true;
   }
 
   private checkGameStart(): void {
@@ -348,6 +371,12 @@ export class UIController {
       this.animate();
       this.disablePlayerControls(1);
       this.disablePlayerControls(2);
+
+      // Remove player button glow (NEU)
+      document.getElementById("player1Btn")!.style.boxShadow = "none";
+      document.getElementById("player2Btn")!.style.boxShadow = "none";
+      document.getElementById("player1Btn")!.style.opacity = "0.5";
+      document.getElementById("player2Btn")!.style.opacity = "0.5";
     }
   }
 }
