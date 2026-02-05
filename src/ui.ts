@@ -40,6 +40,7 @@ export class UIController {
 
     // Initialize UI
     this.updateBudgetDisplay();
+    this.updateGenerationDisplay();
     this.updateActivePlayerUI();
   }
 
@@ -49,6 +50,7 @@ export class UIController {
     this.setupPatternButtons();
     this.setupRotationButtons();
     this.setupReadyButtons();
+    this.setupRestartButton();
   }
 
   private setupCanvasClick(): void {
@@ -227,6 +229,45 @@ export class UIController {
     });
   }
 
+  private setupRestartButton(): void {
+    document.getElementById("restartBtn")!.addEventListener("click", () => {
+      // Hide winner overlay
+      document.getElementById("winnerOverlay")!.style.display = "none";
+
+      // Reset game
+      this.game.reset();
+      this.renderer.drawGrid();
+
+      // Reset UI state
+      this.activePlayer = 1;
+      this.player1Ready = false;
+      this.player2Ready = false;
+      this.selectedPattern1 = null;
+      this.selectedPattern2 = null;
+
+      // Re-enable controls
+      this.enablePlayerControls(1);
+      this.updateActivePlayerUI();
+
+      // Update displays
+      this.updateScoreDisplay();
+      this.updateBudgetDisplay();
+      this.updateGenerationDisplay();
+
+      // Re-enable ready buttons
+      const ready1 = document.getElementById("ready1Btn")! as HTMLButtonElement;
+      const ready2 = document.getElementById("ready2Btn")! as HTMLButtonElement;
+      ready1.disabled = false;
+      ready1.style.opacity = "1";
+      ready2.disabled = false;
+      ready2.style.opacity = "1";
+
+      // Clear previews
+      this.previewRenderer1.drawPreview(null, 1);
+      this.previewRenderer2.drawPreview(null, 2);
+    });
+  }
+
   private animate = (): void => {
     if (!this.game.isRunning) return;
 
@@ -235,6 +276,13 @@ export class UIController {
 
     // Update score display
     this.updateScoreDisplay();
+    this.updateGenerationDisplay();
+
+    // Check if game ended
+    if (!this.game.isRunning) {
+      this.showWinner();
+      return;
+    }
 
     setTimeout(() => {
       this.animationId = requestAnimationFrame(this.animate);
@@ -253,6 +301,34 @@ export class UIController {
       this.game.budgetPlayer1.toString();
     document.getElementById("budget2")!.textContent =
       this.game.budgetPlayer2.toString();
+  }
+
+  private updateGenerationDisplay(): void {
+    document.getElementById("generationCounter")!.textContent =
+      this.game.currentGeneration.toString();
+    document.getElementById("maxGenerations")!.textContent =
+      this.game.maxGenerations.toString();
+  }
+
+  private showWinner(): void {
+    const result = this.game.getWinner();
+    const overlay = document.getElementById("winnerOverlay")!;
+    const title = document.getElementById("winnerTitle")!;
+    const score = document.getElementById("winnerScore")!;
+
+    if (result.winner === 1) {
+      title.textContent = "Player 1 Wins!";
+      title.style.color = "#44dddd";
+    } else if (result.winner === 2) {
+      title.textContent = "Player 2 Wins!";
+      title.style.color = "#dd44dd";
+    } else {
+      title.textContent = "It's a Tie!";
+      title.style.color = "#ffaa00";
+    }
+
+    score.textContent = `Score: ${result.player1Score} - ${result.player2Score}`;
+    overlay.style.display = "flex";
   }
 
   private switchTurn(): void {

@@ -4,6 +4,7 @@ import type { Pattern, Player } from "./types.js";
 import { Zones } from "./zones.js";
 
 const INITIAL_BUDGET = 49;
+const MAX_GENERATIONS = 140;
 
 export class Game {
   readonly rows: number;
@@ -20,6 +21,10 @@ export class Game {
   // Budget system
   budgetPlayer1: number = INITIAL_BUDGET;
   budgetPlayer2: number = INITIAL_BUDGET;
+
+  // Generation tracking
+  currentGeneration: number = 0;
+  maxGenerations: number = MAX_GENERATIONS;
 
   constructor(rows: number, cols: number) {
     this.rows = rows;
@@ -41,6 +46,7 @@ export class Game {
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
     this.resetBudget();
+    this.currentGeneration = 0;
   }
 
   private resetBudget(): void {
@@ -49,6 +55,15 @@ export class Game {
   }
 
   computeNextGeneration(): void {
+    // Increment generation counter
+    this.currentGeneration++;
+
+    // Stop if max generations reached
+    if (this.currentGeneration >= this.maxGenerations) {
+      this.isRunning = false;
+      return;
+    }
+
     const newGrid: boolean[][] = this.createEmptyGrid();
 
     for (let row = 0; row < this.rows; row++) {
@@ -152,5 +167,31 @@ export class Game {
       }
     }
     return false;
+  }
+
+  getWinner(): {
+    winner: Player | null;
+    player1Score: number;
+    player2Score: number;
+  } {
+    if (this.scorePlayer1 > this.scorePlayer2) {
+      return {
+        winner: 1,
+        player1Score: this.scorePlayer1,
+        player2Score: this.scorePlayer2,
+      };
+    } else if (this.scorePlayer2 > this.scorePlayer1) {
+      return {
+        winner: 2,
+        player1Score: this.scorePlayer1,
+        player2Score: this.scorePlayer2,
+      };
+    } else {
+      return {
+        winner: null,
+        player1Score: this.scorePlayer1,
+        player2Score: this.scorePlayer2,
+      }; // Tie
+    }
   }
 }

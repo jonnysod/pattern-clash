@@ -72,7 +72,9 @@
             padding: 12px 24px;
             font-size: 16px;
           "
-        >Spieler 1</button>
+        >
+          Spieler 1
+        </button>
 
         <!-- Score display -->
         <div style="font-size: 24px; font-weight: bold; color: #44dddd">
@@ -147,6 +149,20 @@
       <!-- Main game canvas -->
       <div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+        <!-- Generation counter -->
+        <div
+          style="
+            text-align: center;
+            margin-top: 10px;
+            font-size: 18px;
+            color: #aaaaaa;
+          "
+        >
+          Generation: <span id="generationCounter">0</span> /
+          <span id="maxGenerations"></span>
+        </div>
+
         <div id="controls" style="margin-top: 10px; text-align: center">
           <button id="startBtn">Start</button>
           <button id="pauseBtn">Pause</button>
@@ -244,6 +260,41 @@
         >
           Ready!
         </button>
+      </div>
+    </div>
+
+    </div>
+
+    <!-- Winner overlay -->
+    <div id="winnerOverlay" style="
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    ">
+      <div style="
+        background-color: #2a2a2a;
+        padding: 40px 60px;
+        border-radius: 10px;
+        text-align: center;
+      ">
+        <h1 id="winnerTitle" style="font-size: 48px; margin-bottom: 20px; color: #00ff00">Player 1 Wins!</h1>
+        <p id="winnerScore" style="font-size: 24px; color: #aaaaaa; margin-bottom: 30px">Score: 25 - 18</p>
+        <button id="restartBtn" style="
+          padding: 15px 40px;
+          font-size: 20px;
+          background-color: #44dddd;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+        ">Restart Game</button>
       </div>
     </div>
 
