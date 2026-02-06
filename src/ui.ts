@@ -169,6 +169,7 @@ export class UIController {
           this.currentRotation = 0;
         }
         this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
+        this.updatePatternInfo(1, this.selectedPattern1);
       });
     });
 
@@ -188,6 +189,7 @@ export class UIController {
           this.currentRotation = 0;
         }
         this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
+        this.updatePatternInfo(2, this.selectedPattern2);
       });
     });
   }
@@ -288,6 +290,10 @@ export class UIController {
       // Clear previews
       this.previewRenderer1.drawPreview(null, 1);
       this.previewRenderer2.drawPreview(null, 2);
+
+      // Clear pattern info
+      this.updatePatternInfo(1, null);
+      this.updatePatternInfo(2, null);
     });
   }
 
@@ -376,6 +382,23 @@ export class UIController {
           this.cellSize - 1,
         );
       }
+    }
+  }
+
+  private updatePatternInfo(player: Player, pattern: Pattern | null): void {
+    const nameElement = document.getElementById(
+      player === 1 ? "patternName1" : "patternName2",
+    )!;
+    const costElement = document.getElementById(
+      player === 1 ? "patternCost1" : "patternCost2",
+    )!;
+
+    if (pattern) {
+      nameElement.textContent = pattern.name;
+      costElement.textContent = `Cost: ${pattern.cells.length}`;
+    } else {
+      nameElement.textContent = "-";
+      costElement.textContent = "Cost: -";
     }
   }
 
