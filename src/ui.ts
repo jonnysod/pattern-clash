@@ -46,6 +46,7 @@ export class UIController {
 
   private setupEventListeners(): void {
     this.setupCanvasClick();
+    this.setupCanvasHover();
     this.setupControlButtons();
     this.setupPatternButtons();
     this.setupRotationButtons();
@@ -98,6 +99,28 @@ export class UIController {
           this.renderer.flashInvalidPlacement(col, row);
         }
       }
+      this.renderer.drawGrid();
+    });
+  }
+
+  private setupCanvasHover(): void {
+    const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (this.game.isRunning) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const col = Math.floor(x / this.cellSize);
+      const row = Math.floor(y / this.cellSize);
+
+      this.drawHoverPreview(row, col);
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      // Redraw without preview when mouse leaves
       this.renderer.drawGrid();
     });
   }
@@ -308,6 +331,52 @@ export class UIController {
       this.game.currentGeneration.toString();
     document.getElementById("maxGenerations")!.textContent =
       this.game.maxGenerations.toString();
+  }
+
+  private drawHoverPreview(row: number, col: number): void {
+    // Redraw grid first
+    this.renderer.drawGrid();
+
+    // Get selected pattern for active player
+    const selectedPattern =
+      this.activePlayer === 1 ? this.selectedPattern1 : this.selectedPattern2;
+
+    if (!selectedPattern) return;
+
+    // Apply player-specific transformation and rotation
+    const playerPattern = getPatternForPlayer(
+      selectedPattern,
+      this.activePlayer,
+    );
+    const rotated = rotatePattern(playerPattern, this.currentRotation);
+
+    // Check if placement is valid
+    const isValid = this.game.zones.isValidPlacement(col, this.activePlayer);
+
+    // Draw preview with transparency
+    const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+
+    ctx.fillStyle = isValid ? "rgba(0, 255, 0, 0.3)" : "rgba(255, 0, 0, 0.3)"; // Green if valid, red if not
+
+    for (const [rowOffset, colOffset] of rotated.cells) {
+      const previewRow = row + rowOffset;
+      const previewCol = col + colOffset;
+
+      if (
+        previewRow >= 0 &&
+        previewRow < this.game.rows &&
+        previewCol >= 0 &&
+        previewCol < this.game.cols
+      ) {
+        ctx.fillRect(
+          previewCol * this.cellSize,
+          previewRow * this.cellSize,
+          this.cellSize - 1,
+          this.cellSize - 1,
+        );
+      }
+    }
   }
 
   private showWinner(): void {
