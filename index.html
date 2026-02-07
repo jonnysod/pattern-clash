@@ -115,34 +115,61 @@
           </button>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 5px">
-          <button class="pattern-btn player1-pattern" data-pattern="0">
-            Glider
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="1">
-            LWSS
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="2">
-            MWSS
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="3">
-            Block
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="4">
-            Beehive
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="5">
-            Boat
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="6">
-            Blinker
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="7">
-            Toad
-          </button>
-          <button class="pattern-btn player1-pattern" data-pattern="8">
-            Beacon
-          </button>
+        <div style="display: flex; gap: 10px">
+          <!-- Defense column -->
+          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
+            <div
+              style="
+                font-size: 12px;
+                font-weight: bold;
+                text-align: center;
+                color: #aaaaaa;
+              "
+            >
+              Defense
+            </div>
+            <button class="pattern-btn player1-pattern" data-pattern="3">
+              Block
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="4">
+              Beehive
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="5">
+              Boat
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="6">
+              Blinker
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="7">
+              Toad
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="8">
+              Beacon
+            </button>
+          </div>
+
+          <!-- Attack column -->
+          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
+            <div
+              style="
+                font-size: 12px;
+                font-weight: bold;
+                text-align: center;
+                color: #aaaaaa;
+              "
+            >
+              Attack
+            </div>
+            <button class="pattern-btn player1-pattern" data-pattern="0">
+              Glider
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="1">
+              LWSS
+            </button>
+            <button class="pattern-btn player1-pattern" data-pattern="2">
+              MWSS
+            </button>
+          </div>
         </div>
         <!-- Ready button -->
         <button
@@ -244,34 +271,61 @@
           </button>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 5px">
-          <button class="pattern-btn player2-pattern" data-pattern="0">
-            Glider
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="1">
-            LWSS
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="2">
-            MWSS
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="3">
-            Block
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="4">
-            Beehive
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="5">
-            Boat
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="6">
-            Blinker
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="7">
-            Toad
-          </button>
-          <button class="pattern-btn player2-pattern" data-pattern="8">
-            Beacon
-          </button>
+        <div style="display: flex; gap: 10px">
+          <!-- Attack column (first for Player 2) -->
+          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
+            <div
+              style="
+                font-size: 12px;
+                font-weight: bold;
+                text-align: center;
+                color: #aaaaaa;
+              "
+            >
+              Attack
+            </div>
+            <button class="pattern-btn player2-pattern" data-pattern="0">
+              Glider
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="1">
+              LWSS
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="2">
+              MWSS
+            </button>
+          </div>
+
+          <!-- Defense column (second for Player 2) -->
+          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
+            <div
+              style="
+                font-size: 12px;
+                font-weight: bold;
+                text-align: center;
+                color: #aaaaaa;
+              "
+            >
+              Defense
+            </div>
+            <button class="pattern-btn player2-pattern" data-pattern="3">
+              Block
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="4">
+              Beehive
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="5">
+              Boat
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="6">
+              Blinker
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="7">
+              Toad
+            </button>
+            <button class="pattern-btn player2-pattern" data-pattern="8">
+              Beacon
+            </button>
+          </div>
         </div>
         <!-- Ready button -->
         <button
