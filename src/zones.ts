@@ -25,9 +25,9 @@ export class Zones {
 
     // Placement zones adjusted for endzones
     this.leftEnd =
-      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.25);
+      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.32);
     this.rightStart =
-      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.75);
+      this.endzoneLeftEnd + Math.floor((cols - 2 * this.endzoneWidth) * 0.68);
   }
 
   isValidPlacement(col: number, player: Player): boolean {
