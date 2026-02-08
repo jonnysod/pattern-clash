@@ -15,7 +15,6 @@ export class UIController {
 
   private selectedPattern1: Pattern | null = null;
   private selectedPattern2: Pattern | null = null;
-  private currentRotation: number = 0;
   private animationId: number | null = null;
 
   // Turn-based system
@@ -49,7 +48,6 @@ export class UIController {
     this.setupCanvasHover();
     this.setupControlButtons();
     this.setupPatternButtons();
-    this.setupRotationButtons();
     this.setupReadyButtons();
     this.setupRestartButton();
   }
@@ -78,11 +76,10 @@ export class UIController {
           selectedPattern,
           this.activePlayer,
         );
-        const rotated = rotatePattern(playerPattern, this.currentRotation);
         const success = this.game.placePattern(
           row,
           col,
-          rotated,
+          playerPattern,
           this.activePlayer,
         );
 
@@ -163,10 +160,8 @@ export class UIController {
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
         if (this.selectedPattern1 === PATTERNS[patternIndex]) {
           this.selectedPattern1 = null;
-          this.currentRotation = 0;
         } else {
           this.selectedPattern1 = PATTERNS[patternIndex]!;
-          this.currentRotation = 0;
         }
         this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
         this.updatePatternInfo(1, this.selectedPattern1);
@@ -183,50 +178,12 @@ export class UIController {
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
         if (this.selectedPattern2 === PATTERNS[patternIndex]) {
           this.selectedPattern2 = null;
-          this.currentRotation = 0;
         } else {
           this.selectedPattern2 = PATTERNS[patternIndex]!;
-          this.currentRotation = 0;
         }
         this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
         this.updatePatternInfo(2, this.selectedPattern2);
       });
-    });
-  }
-
-  private setupRotationButtons(): void {
-    // Rotation button handlers für Spieler 1
-    document.getElementById("rotateLeft1")!.addEventListener("click", () => {
-      if (!this.selectedPattern1 || this.activePlayer !== 1) return;
-      this.currentRotation = (this.currentRotation - 90 + 360) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern1, 1);
-      const rotated = rotatePattern(playerPattern, this.currentRotation);
-      this.previewRenderer1.drawPreview(rotated, 1);
-    });
-
-    document.getElementById("rotateRight1")!.addEventListener("click", () => {
-      if (!this.selectedPattern1 || this.activePlayer !== 1) return;
-      this.currentRotation = (this.currentRotation + 90) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern1, 1);
-      const rotated = rotatePattern(playerPattern, this.currentRotation);
-      this.previewRenderer1.drawPreview(rotated, 1);
-    });
-
-    // Rotation button handlers für Spieler 2
-    document.getElementById("rotateLeft2")!.addEventListener("click", () => {
-      if (!this.selectedPattern2 || this.activePlayer !== 2) return;
-      this.currentRotation = (this.currentRotation - 90 + 360) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern2, 2);
-      const rotated = rotatePattern(playerPattern, this.currentRotation);
-      this.previewRenderer2.drawPreview(rotated, 2);
-    });
-
-    document.getElementById("rotateRight2")!.addEventListener("click", () => {
-      if (!this.selectedPattern2 || this.activePlayer !== 2) return;
-      this.currentRotation = (this.currentRotation + 90) % 360;
-      const playerPattern = getPatternForPlayer(this.selectedPattern2, 2);
-      const rotated = rotatePattern(playerPattern, this.currentRotation);
-      this.previewRenderer2.drawPreview(rotated, 2);
     });
   }
 
@@ -354,7 +311,6 @@ export class UIController {
       selectedPattern,
       this.activePlayer,
     );
-    const rotated = rotatePattern(playerPattern, this.currentRotation);
 
     // Check if placement is valid
     const isValid = this.game.zones.isValidPlacement(col, this.activePlayer);
@@ -365,7 +321,7 @@ export class UIController {
 
     ctx.fillStyle = isValid ? "rgba(0, 255, 0, 0.3)" : "rgba(255, 0, 0, 0.3)"; // Green if valid, red if not
 
-    for (const [rowOffset, colOffset] of rotated.cells) {
+    for (const [rowOffset, colOffset] of playerPattern.cells) {
       const previewRow = row + rowOffset;
       const previewCol = col + colOffset;
 
@@ -482,8 +438,6 @@ export class UIController {
       (btn as HTMLButtonElement).disabled = false;
       (btn as HTMLButtonElement).style.opacity = "1";
     });
-    rotateLeft.disabled = false;
-    rotateRight.disabled = false;
 
     // Enable ready button if not already clicked
     const readyBtn = document.getElementById(
@@ -513,8 +467,6 @@ export class UIController {
       (btn as HTMLButtonElement).disabled = true;
       (btn as HTMLButtonElement).style.opacity = "0.3";
     });
-    rotateLeft.disabled = true;
-    rotateRight.disabled = true;
 
     // Disable player button (NEU)
     const playerBtn = document.getElementById(
