@@ -97,7 +97,7 @@ export const PATTERNS: Pattern[] = [
   },
   // New attack patterns
   {
-    name: "Glider NE",
+    name: "Glider down",
     cells: [
       [0, 1],
       [1, 2],
@@ -107,7 +107,7 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
-    name: "Glider SE",
+    name: "Glider up",
     cells: [
       [0, 0],
       [0, 1],
@@ -137,7 +137,7 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
-    name: "Glider Gun (shoots down-right)",
+    name: "Glider Gun (shoots down)",
     cells: [
       [0, 24],
       [1, 22],
@@ -178,7 +178,7 @@ export const PATTERNS: Pattern[] = [
     ],
   },
   {
-    name: "Glider Gun (shoots up-right)",
+    name: "Glider Gun (shoots up)",
     cells: [
       [0, 12],
       [0, 13],
