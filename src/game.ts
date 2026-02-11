@@ -3,8 +3,8 @@
 import type { Pattern, Player } from "./types.js";
 import { Zones } from "./zones.js";
 
-const INITIAL_BUDGET = 49;
-const MAX_GENERATIONS = 140;
+const INITIAL_BUDGET = 80;
+const MAX_GENERATIONS = 400;
 
 export class Game {
   readonly rows: number;
@@ -29,7 +29,7 @@ export class Game {
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
-    this.zones = new Zones(cols);
+    this.zones = new Zones(cols, rows);
     this.grid = this.createEmptyGrid();
     this.resetBudget();
   }
@@ -77,11 +77,14 @@ export class Game {
         } else if (!isAlive && neighbors === 3) {
           newGrid[row]![col] = true; // Birth
 
-          // Count score
-          if (col === this.zones.scoreColumnLeft) {
-            this.scorePlayer2++; // Birth in left score-col
-          } else if (col === this.zones.scoreColumnRight) {
-            this.scorePlayer1++; //  Birth in right score-col
+          // Check scoring
+          const scoreResult = this.zones.isScoreCell(row, col);
+          if (scoreResult.scores) {
+            if (scoreResult.scorer === 1) {
+              this.scorePlayer1++;
+            } else if (scoreResult.scorer === 2) {
+              this.scorePlayer2++;
+            }
           }
         } else {
           newGrid[row]![col] = false; // Dies or stays dead

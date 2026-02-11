@@ -364,15 +364,20 @@ export class UIController {
     const title = document.getElementById("winnerTitle")!;
     const score = document.getElementById("winnerScore")!;
 
+    const restartBtn = document.getElementById("restartBtn")!;
+
     if (result.winner === 1) {
       title.textContent = "Player 1 Wins!";
       title.style.color = "#44dddd";
+      restartBtn.style.backgroundColor = "#44dddd";
     } else if (result.winner === 2) {
       title.textContent = "Player 2 Wins!";
       title.style.color = "#dd44dd";
+      restartBtn.style.backgroundColor = "#dd44dd";
     } else {
       title.textContent = "It's a Tie!";
       title.style.color = "#ffaa00";
+      restartBtn.style.backgroundColor = "#ffaa00";
     }
 
     score.textContent = `Score: ${result.player1Score} - ${result.player2Score}`;

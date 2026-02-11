@@ -20,47 +20,15 @@ export class Renderer {
   drawGrid(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // Draw endzone backgrounds
-    this.ctx.fillStyle = "#1a1a1a"; // Dark gray for endzones
-
-    // Left endzone (Player 2 scores here)
-    this.ctx.fillRect(
-      0,
-      0,
-      this.game.zones.endzoneLeftEnd * this.cellSize,
-      this.canvas.height,
-    );
-
-    // Right endzone (Player 1 scores here)
-    this.ctx.fillRect(
-      this.game.zones.endzoneRightStart * this.cellSize,
-      0,
-      this.game.zones.endzoneWidth * this.cellSize,
-      this.canvas.height,
-    );
-
-    // Highlight score columns
-    this.ctx.fillStyle = "#443300"; // Dark yellow
-    // Left score column (column 3)
-    this.ctx.fillRect(
-      this.game.zones.scoreColumnLeft * this.cellSize,
-      0,
-      this.cellSize,
-      this.canvas.height,
-    );
-    // Right score column (column 76)
-    this.ctx.fillRect(
-      this.game.zones.scoreColumnRight * this.cellSize,
-      0,
-      this.cellSize,
-      this.canvas.height,
-    );
+    // Draw endzone backgrounds (full canvas)
+    this.ctx.fillStyle = "#1a1a1a";
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     // Draw zone backgrounds
     // Left zone (Player 1) - Dark cyan
     this.ctx.fillStyle = "#003333";
     this.ctx.fillRect(
-      this.game.zones.endzoneLeftEnd * this.cellSize, // starts after endzone
+      this.game.zones.endzoneLeftEnd * this.cellSize,
       0,
       (this.game.zones.leftEnd - this.game.zones.endzoneLeftEnd) *
         this.cellSize,
@@ -82,8 +50,142 @@ export class Renderer {
       this.game.zones.rightStart * this.cellSize,
       0,
       (this.game.zones.endzoneRightStart - this.game.zones.rightStart) *
-        this.cellSize, // ends before endzone
+        this.cellSize,
       this.canvas.height,
+    );
+
+    // Top/bottom L-shaped endzones - overlay cyan/magenta with gray
+    this.ctx.fillStyle = "#1a1a1a";
+
+    // Left side - top L endzone (from endzoneLeftEnd to scoreColumnTopLeft)
+    this.ctx.fillRect(
+      this.game.zones.endzoneLeftEnd * this.cellSize,
+      0,
+      (this.game.zones.scoreColumnTopLeft - this.game.zones.endzoneLeftEnd) *
+        this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+    );
+    // Left side - bottom L endzone
+    this.ctx.fillRect(
+      this.game.zones.endzoneLeftEnd * this.cellSize,
+      this.game.zones.endzoneBottomStartRow * this.cellSize,
+      (this.game.zones.scoreColumnBottomLeft - this.game.zones.endzoneLeftEnd) *
+        this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+    );
+    // Right side - top L endzone (from scoreColumnTopRight+1 to endzoneRightStart)
+    this.ctx.fillRect(
+      (this.game.zones.scoreColumnTopRight + 1) * this.cellSize,
+      0,
+      (this.game.zones.endzoneRightStart -
+        this.game.zones.scoreColumnTopRight -
+        1) *
+        this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+    );
+    // Right side - bottom L endzone
+    this.ctx.fillRect(
+      (this.game.zones.scoreColumnBottomRight + 1) * this.cellSize,
+      this.game.zones.endzoneBottomStartRow * this.cellSize,
+      (this.game.zones.endzoneRightStart -
+        this.game.zones.scoreColumnBottomRight -
+        1) *
+        this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+    );
+
+    // Score zones (gelb #443300) - Side columns and L-shapes
+
+    this.ctx.fillStyle = "#443300";
+
+    // Side score columns (between top and bottom endzones)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnLeft * this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+      this.cellSize,
+      (this.game.zones.endzoneBottomStartRow -
+        this.game.zones.endzoneTopRows) *
+        this.cellSize,
+    );
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnRight * this.cellSize,
+      this.game.zones.endzoneTopRows * this.cellSize,
+      this.cellSize,
+      (this.game.zones.endzoneBottomStartRow -
+        this.game.zones.endzoneTopRows) *
+        this.cellSize,
+    );
+
+    // Left top L: vertical part (col scoreColumnTopLeft, row 0 to scoreRowTop)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnTopLeft * this.cellSize,
+      0,
+      this.cellSize,
+      this.game.zones.scoreRowTop * this.cellSize,
+    );
+    // Left top L: horizontal part (row scoreRowTop, col scoreColumnLeft to scoreColumnTopLeft)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnLeft * this.cellSize,
+      this.game.zones.scoreRowTop * this.cellSize,
+      (this.game.zones.scoreColumnTopLeft -
+        this.game.zones.scoreColumnLeft +
+        1) *
+        this.cellSize,
+      this.cellSize,
+    );
+
+    // Left bottom L: horizontal part (row scoreRowBottom)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnLeft * this.cellSize,
+      this.game.zones.scoreRowBottom * this.cellSize,
+      (this.game.zones.scoreColumnBottomLeft -
+        this.game.zones.scoreColumnLeft +
+        1) *
+        this.cellSize,
+      this.cellSize,
+    );
+    // Left bottom L: vertical part (col scoreColumnBottomLeft, scoreRowBottom+1 to end)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnBottomLeft * this.cellSize,
+      (this.game.zones.scoreRowBottom + 1) * this.cellSize,
+      this.cellSize,
+      (this.game.rows - this.game.zones.scoreRowBottom - 1) * this.cellSize,
+    );
+
+    // Right top L: vertical part (col scoreColumnTopRight, row 0 to scoreRowTop)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnTopRight * this.cellSize,
+      0,
+      this.cellSize,
+      this.game.zones.scoreRowTop * this.cellSize,
+    );
+    // Right top L: horizontal part (row scoreRowTop, col scoreColumnTopRight to scoreColumnRight)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnTopRight * this.cellSize,
+      this.game.zones.scoreRowTop * this.cellSize,
+      (this.game.zones.scoreColumnRight -
+        this.game.zones.scoreColumnTopRight +
+        1) *
+        this.cellSize,
+      this.cellSize,
+    );
+
+    // Right bottom L: horizontal part (row scoreRowBottom)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnBottomRight * this.cellSize,
+      this.game.zones.scoreRowBottom * this.cellSize,
+      (this.game.zones.scoreColumnRight -
+        this.game.zones.scoreColumnBottomRight +
+        1) *
+        this.cellSize,
+      this.cellSize,
+    );
+    // Right bottom L: vertical part (col scoreColumnBottomRight, scoreRowBottom+1 to end)
+    this.ctx.fillRect(
+      this.game.zones.scoreColumnBottomRight * this.cellSize,
+      (this.game.zones.scoreRowBottom + 1) * this.cellSize,
+      this.cellSize,
+      (this.game.rows - this.game.zones.scoreRowBottom - 1) * this.cellSize,
     );
 
     // Draw living cells (all green)

@@ -6,7 +6,7 @@ import { UIController } from "./ui.js";
 
 //#region Canvas Setup
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
-const CELL_SIZE = 10;
+const CELL_SIZE = 7;
 const COLS = canvas.width / CELL_SIZE;
 const ROWS = canvas.height / CELL_SIZE;
 //#endregion
