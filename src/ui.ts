@@ -272,7 +272,7 @@ export class UIController {
 
     setTimeout(() => {
       this.animationId = requestAnimationFrame(this.animate);
-    }, 100); // 100ms between generations = ~10 FPS
+    }, 80); // 80ms between generations = ~12 FPS
   };
 
   private updateScoreDisplay(): void {
