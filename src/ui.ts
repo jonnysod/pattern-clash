@@ -5,7 +5,7 @@ import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
 import { rotatePattern, getPatternForPlayer } from "./patternUtils.js";
-const TURN_DURATION = 7000; // 7 seconds in milliseconds
+const TURN_DURATION = 10000; // 10 seconds in milliseconds
 
 //#region TurnTimer Class
 class TurnTimer {
