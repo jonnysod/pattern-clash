@@ -2,6 +2,7 @@
 
 import type { Pattern, Player } from "./types.js";
 import { Zones } from "./zones.js";
+import { PATTERNS } from "./patterns.js";
 
 const INITIAL_BUDGET = 80;
 const MAX_GENERATIONS = 400;
@@ -26,6 +27,9 @@ export class Game {
   currentGeneration: number = 0;
   maxGenerations: number = MAX_GENERATIONS;
 
+  // Surrender tracking
+  surrenderedPlayer: Player | null = null;
+
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
@@ -47,6 +51,7 @@ export class Game {
     this.scorePlayer2 = 0;
     this.resetBudget();
     this.currentGeneration = 0;
+    this.surrenderedPlayer = null;
   }
 
   private resetBudget(): void {
@@ -172,11 +177,46 @@ export class Game {
     return false;
   }
 
+  getMinPatternCost(): number {
+    return Math.min(...PATTERNS.map((p) => p.cells.length));
+  }
+
+  canAffordAnyPattern(player: Player): boolean {
+    const budget = player === 1 ? this.budgetPlayer1 : this.budgetPlayer2;
+    return budget >= this.getMinPatternCost();
+  }
+
+  surrender(player: Player): void {
+    this.surrenderedPlayer = player;
+    if (player === 1) {
+      this.scorePlayer1 = 0;
+    } else {
+      this.scorePlayer2 = 0;
+    }
+    this.isRunning = false;
+  }
+
   getWinner(): {
     winner: Player | null;
     player1Score: number;
     player2Score: number;
   } {
+    // Surrender: The other player always wins
+    if (this.surrenderedPlayer === 1) {
+      return {
+        winner: 2,
+        player1Score: this.scorePlayer1,
+        player2Score: this.scorePlayer2,
+      };
+    } else if (this.surrenderedPlayer === 2) {
+      return {
+        winner: 1,
+        player1Score: this.scorePlayer1,
+        player2Score: this.scorePlayer2,
+      };
+    }
+
+    // Normal: Higher score wins
     if (this.scorePlayer1 > this.scorePlayer2) {
       return {
         winner: 1,
@@ -194,7 +234,7 @@ export class Game {
         winner: null,
         player1Score: this.scorePlayer1,
         player2Score: this.scorePlayer2,
-      }; // Tie
+      };
     }
   }
 }

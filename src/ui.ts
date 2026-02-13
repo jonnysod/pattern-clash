@@ -46,7 +46,7 @@ export class UIController {
   private setupEventListeners(): void {
     this.setupCanvasClick();
     this.setupCanvasHover();
-    this.setupControlButtons();
+    this.setupSurrenderButtons();
     this.setupPatternButtons();
     this.setupReadyButtons();
     this.setupRestartButton();
@@ -122,26 +122,19 @@ export class UIController {
     });
   }
 
-  private setupControlButtons(): void {
-    document.getElementById("startBtn")!.addEventListener("click", () => {
-      this.game.isRunning = true;
-      this.animate();
-    });
-
-    document.getElementById("pauseBtn")!.addEventListener("click", () => {
-      this.game.isRunning = false;
-      if (this.animationId !== null) {
-        cancelAnimationFrame(this.animationId);
+  private setupSurrenderButtons(): void {
+    document.getElementById("surrender1Btn")!.addEventListener("click", () => {
+      if (confirm("Surrender? Your opponent wins!")) {
+        this.game.surrender(1);
+        this.showWinner();
       }
     });
 
-    document.getElementById("resetBtn")!.addEventListener("click", () => {
-      this.game.isRunning = false;
-      if (this.animationId !== null) {
-        cancelAnimationFrame(this.animationId);
+    document.getElementById("surrender2Btn")!.addEventListener("click", () => {
+      if (confirm("Surrender? Your opponent wins!")) {
+        this.game.surrender(2);
+        this.showWinner();
       }
-      this.game.reset();
-      this.renderer.drawGrid();
     });
   }
 
@@ -388,12 +381,12 @@ export class UIController {
     // Switch to other player
     if (this.activePlayer === 1) {
       // Check if Player 2 has budget left
-      if (this.game.budgetPlayer2 > 0 && !this.player2Ready) {
+      if (this.game.canAffordAnyPattern(2) && !this.player2Ready) {
         this.activePlayer = 2;
       }
     } else {
       // Check if Player 1 has budget left
-      if (this.game.budgetPlayer1 > 0 && !this.player1Ready) {
+      if (this.game.canAffordAnyPattern(1) && !this.player1Ready) {
         this.activePlayer = 1;
       }
     }
@@ -488,8 +481,8 @@ export class UIController {
 
   private checkGameStart(): void {
     // Start game if both players are ready or out of budget
-    const p1Done = this.player1Ready || this.game.budgetPlayer1 === 0;
-    const p2Done = this.player2Ready || this.game.budgetPlayer2 === 0;
+    const p1Done = this.player1Ready || !this.game.canAffordAnyPattern(1);
+    const p2Done = this.player2Ready || !this.game.canAffordAnyPattern(2);
 
     if (p1Done && p2Done) {
       this.game.isRunning = true;
