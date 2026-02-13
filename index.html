@@ -44,8 +44,6 @@
     </style>
   </head>
   <body>
-    <h1>Pattern Clash</h1>
-
     <div
       style="
         display: flex;
@@ -201,20 +199,38 @@
 
       <!-- Main game canvas -->
       <div>
-        <canvas id="gameCanvas" width="700" height="700"></canvas>
+        <!-- Generation counter and Turn timer (above game canvas) -->
+        <div style="text-align: center; margin-bottom: 10px; width: 700px">
+          <div style="font-size: 14px; color: #aaaaaa; margin-bottom: 5px">
+            Generation: <span id="generationCounter">0</span> /
+            <span id="maxGenerations"></span>
+          </div>
 
-        <!-- Generation counter -->
-        <div
-          style="
-            text-align: center;
-            margin-top: 10px;
-            font-size: 18px;
-            color: #aaaaaa;
-          "
-        >
-          Generation: <span id="generationCounter">0</span> /
-          <span id="maxGenerations"></span>
+          <!-- Turn timer bar (only visible in live phase) -->
+          <div id="turnTimerContainer" style="visibility: hidden;">
+            <div
+              style="
+                width: 700px;
+                height: 8px;
+                background-color: #333;
+                border-radius: 4px;
+                overflow: hidden;
+                border: 1px solid #666;
+              "
+            >
+              <div
+                id="turnTimerBar"
+                style="
+                  height: 100%;
+                  width: 100%;
+                  background-color: #44dddd;
+                  transition: width 0.1s linear;
+                "
+              ></div>
+            </div>
+          </div>
         </div>
+        <canvas id="gameCanvas" width="700" height="700"></canvas>
       </div>
 
       <!-- Spieler 2 (rechts) -->

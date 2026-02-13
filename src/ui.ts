@@ -5,6 +5,56 @@ import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
 import { rotatePattern, getPatternForPlayer } from "./patternUtils.js";
+const TURN_DURATION = 7000; // 7 seconds in milliseconds
+
+//#region TurnTimer Class
+class TurnTimer {
+  private duration: number;
+  private remainingTime: number;
+  private intervalId: number | null = null;
+  private onTimeoutCallback: () => void;
+  private onTickCallback: (remaining: number, total: number) => void;
+
+  constructor(
+    duration: number,
+    onTimeout: () => void,
+    onTick: (remaining: number, total: number) => void,
+  ) {
+    this.duration = duration;
+    this.remainingTime = duration;
+    this.onTimeoutCallback = onTimeout;
+    this.onTickCallback = onTick;
+  }
+
+  start(): void {
+    this.remainingTime = this.duration;
+    this.onTickCallback(this.remainingTime, this.duration);
+
+    this.intervalId = window.setInterval(() => {
+      this.remainingTime -= 100;
+
+      if (this.remainingTime <= 0) {
+        this.stop();
+        this.onTimeoutCallback();
+      } else {
+        this.onTickCallback(this.remainingTime, this.duration);
+      }
+    }, 100);
+  }
+
+  stop(): void {
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+  }
+
+  reset(): void {
+    this.stop();
+    this.remainingTime = this.duration;
+  }
+}
+//#endregion
 
 export class UIController {
   private game: Game;
@@ -21,6 +71,10 @@ export class UIController {
   private activePlayer: Player = 1;
   private player1Ready: boolean = false;
   private player2Ready: boolean = false;
+
+  // Live phase turn system (can be disabled for online multiplayer)
+  private enableTurnRestriction: boolean = true; // Set to false for free-for-all
+  private turnTimer: TurnTimer | null = null;
 
   constructor(
     game: Game,
@@ -55,9 +109,19 @@ export class UIController {
   private setupCanvasClick(): void {
     const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     canvas.addEventListener("click", (e) => {
-      // Only allow placement if game is not running and it's the player's turn
-      if (this.game.isRunning) {
+      // In placement phase: only allow if not running
+      // In live phase: allow placement during simulation
+      if (this.game.isRunning && !this.game.isLivePhase) {
         return;
+      }
+
+      // Check turn restriction (only in hot-seat mode during live phase)
+      if (
+        this.game.isLivePhase &&
+        this.enableTurnRestriction &&
+        !this.isPlayersTurn(this.getClickingPlayer(e))
+      ) {
+        return; // Not this player's turn
       }
 
       const rect = canvas.getBoundingClientRect();
@@ -67,31 +131,43 @@ export class UIController {
       const col = Math.floor(x / this.cellSize);
       const row = Math.floor(y / this.cellSize);
 
+      // Determine which player is clicking (based on active player)
+      const clickingPlayer = this.game.isLivePhase
+        ? this.getClickingPlayer(e)
+        : this.activePlayer;
+
       const selectedPattern =
-        this.activePlayer === 1 ? this.selectedPattern1 : this.selectedPattern2;
+        clickingPlayer === 1 ? this.selectedPattern1 : this.selectedPattern2;
 
       if (selectedPattern) {
         // Place rotated and player-specific pattern
         const playerPattern = getPatternForPlayer(
           selectedPattern,
-          this.activePlayer,
+          clickingPlayer,
         );
         const success = this.game.placePattern(
           row,
           col,
           playerPattern,
-          this.activePlayer,
+          clickingPlayer,
         );
 
         if (success) {
           this.updateBudgetDisplay();
-          this.switchTurn();
+
+          // In placement phase: switch turn as before
+          // In live phase: switch turn and restart timer
+          if (this.game.isLivePhase) {
+            this.switchTurnLivePhase();
+          } else {
+            this.switchTurn();
+          }
         } else {
           this.renderer.flashInvalidPlacement(col, row);
         }
       } else {
         // Toggle single cell (with zone validation)
-        const success = this.game.toggleCell(row, col, this.activePlayer);
+        const success = this.game.toggleCell(row, col, clickingPlayer);
         if (!success) {
           this.renderer.flashInvalidPlacement(col, row);
         }
@@ -100,11 +176,25 @@ export class UIController {
     });
   }
 
+  // Helper: Determine which player is clicking (for future online mode)
+  private getClickingPlayer(e: MouseEvent): Player {
+    // In hot-seat mode, this is always the active player
+    // In online mode, this would be determined by the client
+    return this.activePlayer;
+  }
+
+  // Helper: Check if it's this player's turn (respects enableTurnRestriction)
+  private isPlayersTurn(player: Player): boolean {
+    if (!this.enableTurnRestriction) return true; // Free-for-all mode
+    return player === this.activePlayer;
+  }
+
   private setupCanvasHover(): void {
     const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 
     canvas.addEventListener("mousemove", (e) => {
-      if (this.game.isRunning) return;
+      // Allow hover preview in placement phase and live phase
+      if (this.game.isRunning && !this.game.isLivePhase) return;
 
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -206,6 +296,15 @@ export class UIController {
 
   private setupRestartButton(): void {
     document.getElementById("restartBtn")!.addEventListener("click", () => {
+      // Stop and reset timer
+      if (this.turnTimer) {
+        this.turnTimer.stop();
+        this.turnTimer = null;
+      }
+
+      // Hide timer UI
+      document.getElementById("turnTimerContainer")!.style.visibility = "hidden";
+
       // Hide winner overlay
       document.getElementById("winnerOverlay")!.style.display = "none";
 
@@ -352,6 +451,15 @@ export class UIController {
   }
 
   private showWinner(): void {
+    // Stop timer when game ends
+    if (this.turnTimer) {
+      this.turnTimer.stop();
+      this.turnTimer = null;
+    }
+
+    // Hide timer UI
+    document.getElementById("turnTimerContainer")!.style.visibility = "hidden";
+
     const result = this.game.getWinner();
     const overlay = document.getElementById("winnerOverlay")!;
     const title = document.getElementById("winnerTitle")!;
@@ -485,16 +593,97 @@ export class UIController {
     const p2Done = this.player2Ready || !this.game.canAffordAnyPattern(2);
 
     if (p1Done && p2Done) {
-      this.game.isRunning = true;
-      this.animate();
-      this.disablePlayerControls(1);
-      this.disablePlayerControls(2);
-
-      // Remove player button glow (NEU)
-      document.getElementById("player1Btn")!.style.boxShadow = "none";
-      document.getElementById("player2Btn")!.style.boxShadow = "none";
-      document.getElementById("player1Btn")!.style.opacity = "0.5";
-      document.getElementById("player2Btn")!.style.opacity = "0.5";
+      this.startLivePhase();
     }
+  }
+
+  private startLivePhase(): void {
+    this.game.isRunning = true;
+    this.game.isLivePhase = true;
+
+    // Show turn timer UI
+    document.getElementById("turnTimerContainer")!.style.visibility = "visible";
+
+    // Start animation
+    this.animate();
+
+    // Re-enable player controls for live phase
+    this.enablePlayerControls(1);
+    this.enablePlayerControls(2);
+
+    // Start turn timer
+    this.activePlayer = 1; // Reset to player 1
+    this.startTurnTimer();
+    this.updateActivePlayerUI();
+  }
+
+  private startTurnTimer(): void {
+    if (this.turnTimer) {
+      this.turnTimer.stop();
+    }
+
+    this.turnTimer = new TurnTimer(
+      TURN_DURATION,
+      () => this.onTurnTimeout(),
+      (remaining, total) => this.updateTimerDisplay(remaining, total),
+    );
+
+    this.turnTimer.start();
+  }
+
+  private onTurnTimeout(): void {
+    // Timer ran out, switch to next player
+    this.switchTurnLivePhase();
+  }
+
+  private updateTimerDisplay(remaining: number, total: number): void {
+    const barElement = document.getElementById("turnTimerBar")!;
+
+    // Update bar width
+    const percentage = (remaining / total) * 100;
+    barElement.style.width = `${percentage}%`;
+
+    // Update bar color based on active player
+    barElement.style.backgroundColor =
+      this.activePlayer === 1 ? "#44dddd" : "#dd44dd";
+  }
+
+  private switchTurnLivePhase(): void {
+    // Determine next player
+    let nextPlayer: Player;
+
+    if (this.activePlayer === 1) {
+      // Try to switch to Player 2
+      if (this.game.canAffordAnyPattern(2)) {
+        nextPlayer = 2;
+      } else {
+        // Player 2 has no budget, stay with Player 1
+        nextPlayer = 1;
+      }
+    } else {
+      // Try to switch to Player 1
+      if (this.game.canAffordAnyPattern(1)) {
+        nextPlayer = 1;
+      } else {
+        // Player 1 has no budget, stay with Player 2
+        nextPlayer = 2;
+      }
+    }
+
+    // If both players have no budget, don't switch
+    if (
+      !this.game.canAffordAnyPattern(1) &&
+      !this.game.canAffordAnyPattern(2)
+    ) {
+      this.turnTimer?.stop();
+      document.getElementById("turnTimerContainer")!.style.visibility = "hidden";
+      return;
+    }
+
+    this.activePlayer = nextPlayer;
+    this.updateActivePlayerUI();
+
+    // Restart timer
+    this.startTurnTimer();
   }
 }

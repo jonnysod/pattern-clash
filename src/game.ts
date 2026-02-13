@@ -5,7 +5,7 @@ import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
 
 const INITIAL_BUDGET = 80;
-const MAX_GENERATIONS = 400;
+const MAX_GENERATIONS = 800;
 
 export class Game {
   readonly rows: number;
@@ -14,6 +14,7 @@ export class Game {
 
   grid: boolean[][];
   isRunning: boolean = false;
+  isLivePhase: boolean = false; // Live-phase: Simulation runs, players can still place
 
   // Score
   scorePlayer1: number = 0;
@@ -47,6 +48,7 @@ export class Game {
   reset(): void {
     this.grid = this.createEmptyGrid();
     this.isRunning = false;
+    this.isLivePhase = false;
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
     this.resetBudget();
