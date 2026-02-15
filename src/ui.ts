@@ -593,6 +593,12 @@ export class UIController {
       readyBtn.disabled = false;
       readyBtn.style.opacity = "1";
     }
+    // Enable surrender button
+    const surrenderBtn = document.getElementById(
+      player === 1 ? "surrender1Btn" : "surrender2Btn",
+    )! as HTMLButtonElement;
+    surrenderBtn.disabled = false;
+    surrenderBtn.style.opacity = "1";
   }
 
   private disablePlayerControls(player: Player): void {
@@ -623,6 +629,13 @@ export class UIController {
       player === 1 ? "ready1Btn" : "ready2Btn",
     )! as HTMLButtonElement;
     readyBtn.disabled = true;
+    readyBtn.style.opacity = "0.3";
+    // Disable surrender button
+    const surrenderBtn = document.getElementById(
+      player === 1 ? "surrender1Btn" : "surrender2Btn",
+    )! as HTMLButtonElement;
+    surrenderBtn.disabled = true;
+    surrenderBtn.style.opacity = "0.3";
   }
 
   private checkGameStart(): void {
