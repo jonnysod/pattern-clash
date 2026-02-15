@@ -165,12 +165,6 @@ export class UIController {
         } else {
           this.renderer.flashInvalidPlacement(col, row);
         }
-      } else {
-        // Toggle single cell (with zone validation)
-        const success = this.game.toggleCell(row, col, clickingPlayer);
-        if (!success) {
-          this.renderer.flashInvalidPlacement(col, row);
-        }
       }
       this.renderer.drawGrid();
     });
@@ -241,11 +235,7 @@ export class UIController {
         player2Btn.style.opacity = "0.6";
 
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
-        if (this.selectedPattern1 === PATTERNS[patternIndex]) {
-          this.selectedPattern1 = null;
-        } else {
-          this.selectedPattern1 = PATTERNS[patternIndex]!;
-        }
+        this.selectedPattern1 = PATTERNS[patternIndex]!;
         this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
         this.updatePatternInfo(1, this.selectedPattern1);
       });
@@ -259,11 +249,7 @@ export class UIController {
         player1Btn.style.opacity = "0.6";
 
         const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
-        if (this.selectedPattern2 === PATTERNS[patternIndex]) {
-          this.selectedPattern2 = null;
-        } else {
-          this.selectedPattern2 = PATTERNS[patternIndex]!;
-        }
+        this.selectedPattern2 = PATTERNS[patternIndex]!;
         this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
         this.updatePatternInfo(2, this.selectedPattern2);
       });
@@ -303,7 +289,8 @@ export class UIController {
       }
 
       // Hide timer UI
-      document.getElementById("turnTimerContainer")!.style.visibility = "hidden";
+      document.getElementById("turnTimerContainer")!.style.visibility =
+        "hidden";
 
       // Hide winner overlay
       document.getElementById("winnerOverlay")!.style.display = "none";
@@ -450,6 +437,56 @@ export class UIController {
     }
   }
 
+  private updatePatternButtonStates(): void {
+    // Player 1 buttons
+    document.querySelectorAll(".player1-pattern").forEach((btn) => {
+      const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
+      const pattern = PATTERNS[patternIndex]!;
+      const canAfford = this.game.budgetPlayer1 >= pattern.cells.length;
+      const isActive = this.activePlayer === 1;
+
+      (btn as HTMLButtonElement).disabled = !isActive || !canAfford;
+      (btn as HTMLButtonElement).style.opacity = !isActive
+        ? "0.3"
+        : canAfford
+          ? "1"
+          : "0.3";
+    });
+
+    // Player 2 buttons
+    document.querySelectorAll(".player2-pattern").forEach((btn) => {
+      const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
+      const pattern = PATTERNS[patternIndex]!;
+      const canAfford = this.game.budgetPlayer2 >= pattern.cells.length;
+      const isActive = this.activePlayer === 2;
+
+      (btn as HTMLButtonElement).disabled = !isActive || !canAfford;
+      (btn as HTMLButtonElement).style.opacity = !isActive
+        ? "0.3"
+        : canAfford
+          ? "1"
+          : "0.3";
+    });
+
+    // Deselect if current pattern is now too expensive
+    if (
+      this.selectedPattern1 &&
+      this.game.budgetPlayer1 < this.selectedPattern1.cells.length
+    ) {
+      this.selectedPattern1 = null;
+      this.previewRenderer1.drawPreview(null, 1);
+      this.updatePatternInfo(1, null);
+    }
+    if (
+      this.selectedPattern2 &&
+      this.game.budgetPlayer2 < this.selectedPattern2.cells.length
+    ) {
+      this.selectedPattern2 = null;
+      this.previewRenderer2.drawPreview(null, 2);
+      this.updatePatternInfo(2, null);
+    }
+  }
+
   private showWinner(): void {
     // Stop timer when game ends
     if (this.turnTimer) {
@@ -526,6 +563,7 @@ export class UIController {
       this.enablePlayerControls(2);
       this.disablePlayerControls(1);
     }
+    this.updatePatternButtonStates();
   }
 
   private enablePlayerControls(player: Player): void {
@@ -676,7 +714,8 @@ export class UIController {
       !this.game.canAffordAnyPattern(2)
     ) {
       this.turnTimer?.stop();
-      document.getElementById("turnTimerContainer")!.style.visibility = "hidden";
+      document.getElementById("turnTimerContainer")!.style.visibility =
+        "hidden";
       return;
     }
 
