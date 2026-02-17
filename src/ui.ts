@@ -92,7 +92,7 @@ export class UIController {
     this.setupEventListeners();
 
     // Initialize UI
-    this.updateBudgetDisplay();
+    this.updatePointsDisplay();
     this.updateGenerationDisplay();
     this.updateActivePlayerUI();
   }
@@ -153,7 +153,7 @@ export class UIController {
         );
 
         if (success) {
-          this.updateBudgetDisplay();
+          this.updatePointsDisplay();
 
           // In placement phase: switch turn as before
           // In live phase: switch turn and restart timer
@@ -311,8 +311,7 @@ export class UIController {
       this.updateActivePlayerUI();
 
       // Update displays
-      this.updateScoreDisplay();
-      this.updateBudgetDisplay();
+      this.updatePointsDisplay();
       this.updateGenerationDisplay();
 
       // Re-enable ready buttons
@@ -340,7 +339,7 @@ export class UIController {
     this.renderer.drawGrid();
 
     // Update score display
-    this.updateScoreDisplay();
+    this.updatePointsDisplay();
     this.updateGenerationDisplay();
 
     // Check if game ended
@@ -354,18 +353,11 @@ export class UIController {
     }, 80); // 80ms between generations = ~12 FPS
   };
 
-  private updateScoreDisplay(): void {
-    document.getElementById("score1")!.textContent =
-      this.game.scorePlayer1.toString();
-    document.getElementById("score2")!.textContent =
-      this.game.scorePlayer2.toString();
-  }
-
-  private updateBudgetDisplay(): void {
-    document.getElementById("budget1")!.textContent =
-      this.game.budgetPlayer1.toString();
-    document.getElementById("budget2")!.textContent =
-      this.game.budgetPlayer2.toString();
+  private updatePointsDisplay(): void {
+    document.getElementById("points1")!.textContent =
+      this.game.pointsPlayer1.toString();
+    document.getElementById("points2")!.textContent =
+      this.game.pointsPlayer2.toString();
   }
 
   private updateGenerationDisplay(): void {
@@ -442,7 +434,7 @@ export class UIController {
     document.querySelectorAll(".player1-pattern").forEach((btn) => {
       const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
       const pattern = PATTERNS[patternIndex]!;
-      const canAfford = this.game.budgetPlayer1 >= pattern.cells.length;
+      const canAfford = this.game.pointsPlayer1 >= pattern.cells.length;
       const isActive = this.activePlayer === 1;
 
       (btn as HTMLButtonElement).disabled = !isActive || !canAfford;
@@ -457,7 +449,7 @@ export class UIController {
     document.querySelectorAll(".player2-pattern").forEach((btn) => {
       const patternIndex = parseInt(btn.getAttribute("data-pattern")!);
       const pattern = PATTERNS[patternIndex]!;
-      const canAfford = this.game.budgetPlayer2 >= pattern.cells.length;
+      const canAfford = this.game.pointsPlayer2 >= pattern.cells.length;
       const isActive = this.activePlayer === 2;
 
       (btn as HTMLButtonElement).disabled = !isActive || !canAfford;
@@ -471,7 +463,7 @@ export class UIController {
     // Deselect if current pattern is now too expensive
     if (
       this.selectedPattern1 &&
-      this.game.budgetPlayer1 < this.selectedPattern1.cells.length
+      this.game.pointsPlayer1 < this.selectedPattern1.cells.length
     ) {
       this.selectedPattern1 = null;
       this.previewRenderer1.drawPreview(null, 1);
@@ -479,7 +471,7 @@ export class UIController {
     }
     if (
       this.selectedPattern2 &&
-      this.game.budgetPlayer2 < this.selectedPattern2.cells.length
+      this.game.pointsPlayer2 < this.selectedPattern2.cells.length
     ) {
       this.selectedPattern2 = null;
       this.previewRenderer2.drawPreview(null, 2);
@@ -525,12 +517,12 @@ export class UIController {
   private switchTurn(): void {
     // Switch to other player
     if (this.activePlayer === 1) {
-      // Check if Player 2 has budget left
+      // Check if Player 2 has points left
       if (this.game.canAffordAnyPattern(2) && !this.player2Ready) {
         this.activePlayer = 2;
       }
     } else {
-      // Check if Player 1 has budget left
+      // Check if Player 1 has points left
       if (this.game.canAffordAnyPattern(1) && !this.player1Ready) {
         this.activePlayer = 1;
       }
@@ -639,7 +631,7 @@ export class UIController {
   }
 
   private checkGameStart(): void {
-    // Start game if both players are ready or out of budget
+    // Start game if both players are ready or out of points
     const p1Done = this.player1Ready || !this.game.canAffordAnyPattern(1);
     const p2Done = this.player2Ready || !this.game.canAffordAnyPattern(2);
 
@@ -708,7 +700,7 @@ export class UIController {
       if (this.game.canAffordAnyPattern(2)) {
         nextPlayer = 2;
       } else {
-        // Player 2 has no budget, stay with Player 1
+        // Player 2 has no points, stay with Player 1
         nextPlayer = 1;
       }
     } else {
@@ -716,12 +708,12 @@ export class UIController {
       if (this.game.canAffordAnyPattern(1)) {
         nextPlayer = 1;
       } else {
-        // Player 1 has no budget, stay with Player 2
+        // Player 1 has no points, stay with Player 2
         nextPlayer = 2;
       }
     }
 
-    // If both players have no budget, don't switch
+    // If both players have no points, don't switch
     if (
       !this.game.canAffordAnyPattern(1) &&
       !this.game.canAffordAnyPattern(2)

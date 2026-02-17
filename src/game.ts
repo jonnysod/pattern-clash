@@ -16,13 +16,9 @@ export class Game {
   isRunning: boolean = false;
   isLivePhase: boolean = false; // Live-phase: Simulation runs, players can still place
 
-  // Score
-  scorePlayer1: number = 0;
-  scorePlayer2: number = 0;
-
-  // Budget system
-  budgetPlayer1: number = INITIAL_BUDGET;
-  budgetPlayer2: number = INITIAL_BUDGET;
+  // Points system (used for placing patterns and scoring)
+  pointsPlayer1: number = INITIAL_BUDGET;
+  pointsPlayer2: number = INITIAL_BUDGET;
 
   // Generation tracking
   currentGeneration: number = 0;
@@ -36,7 +32,7 @@ export class Game {
     this.cols = cols;
     this.zones = new Zones(cols, rows);
     this.grid = this.createEmptyGrid();
-    this.resetBudget();
+    this.resetPoints();
   }
 
   private createEmptyGrid(): boolean[][] {
@@ -49,16 +45,14 @@ export class Game {
     this.grid = this.createEmptyGrid();
     this.isRunning = false;
     this.isLivePhase = false;
-    this.scorePlayer1 = 0;
-    this.scorePlayer2 = 0;
-    this.resetBudget();
+    this.resetPoints();
     this.currentGeneration = 0;
     this.surrenderedPlayer = null;
   }
 
-  private resetBudget(): void {
-    this.budgetPlayer1 = INITIAL_BUDGET;
-    this.budgetPlayer2 = INITIAL_BUDGET;
+  private resetPoints(): void {
+    this.pointsPlayer1 = INITIAL_BUDGET;
+    this.pointsPlayer2 = INITIAL_BUDGET;
   }
 
   computeNextGeneration(): void {
@@ -88,9 +82,9 @@ export class Game {
           const scoreResult = this.zones.isScoreCell(row, col);
           if (scoreResult.scores) {
             if (scoreResult.scorer === 1) {
-              this.scorePlayer1++;
+              this.pointsPlayer1 += 2;
             } else if (scoreResult.scorer === 2) {
-              this.scorePlayer2++;
+              this.pointsPlayer2 += 2;
             }
           }
         } else {
@@ -142,11 +136,11 @@ export class Game {
 
     // Check budget
     const patternCost = pattern.cells.length;
-    const currentBudget =
-      player === 1 ? this.budgetPlayer1 : this.budgetPlayer2;
+    const currentPoints =
+      player === 1 ? this.pointsPlayer1 : this.pointsPlayer2;
 
-    if (currentBudget < patternCost) {
-      return false; // Not enough budget
+    if (currentPoints < patternCost) {
+      return false; // Not enough points
     }
 
     // Place pattern
@@ -159,11 +153,11 @@ export class Game {
       }
     }
 
-    // Deduct budget
+    // Deduct points
     if (player === 1) {
-      this.budgetPlayer1 -= patternCost;
+      this.pointsPlayer1 -= patternCost;
     } else {
-      this.budgetPlayer2 -= patternCost;
+      this.pointsPlayer2 -= patternCost;
     }
 
     return true;
@@ -184,16 +178,16 @@ export class Game {
   }
 
   canAffordAnyPattern(player: Player): boolean {
-    const budget = player === 1 ? this.budgetPlayer1 : this.budgetPlayer2;
-    return budget >= this.getMinPatternCost();
+    const points = player === 1 ? this.pointsPlayer1 : this.pointsPlayer2;
+    return points >= this.getMinPatternCost();
   }
 
   surrender(player: Player): void {
     this.surrenderedPlayer = player;
     if (player === 1) {
-      this.scorePlayer1 = 0;
+      this.pointsPlayer1 = 0;
     } else {
-      this.scorePlayer2 = 0;
+      this.pointsPlayer2 = 0;
     }
     this.isRunning = false;
   }
@@ -207,35 +201,35 @@ export class Game {
     if (this.surrenderedPlayer === 1) {
       return {
         winner: 2,
-        player1Score: this.scorePlayer1,
-        player2Score: this.scorePlayer2,
+        player1Score: this.pointsPlayer1,
+        player2Score: this.pointsPlayer2,
       };
     } else if (this.surrenderedPlayer === 2) {
       return {
         winner: 1,
-        player1Score: this.scorePlayer1,
-        player2Score: this.scorePlayer2,
+        player1Score: this.pointsPlayer1,
+        player2Score: this.pointsPlayer2,
       };
     }
 
-    // Normal: Higher score wins
-    if (this.scorePlayer1 > this.scorePlayer2) {
+    // Normal: Higher points wins
+    if (this.pointsPlayer1 > this.pointsPlayer2) {
       return {
         winner: 1,
-        player1Score: this.scorePlayer1,
-        player2Score: this.scorePlayer2,
+        player1Score: this.pointsPlayer1,
+        player2Score: this.pointsPlayer2,
       };
-    } else if (this.scorePlayer2 > this.scorePlayer1) {
+    } else if (this.pointsPlayer2 > this.pointsPlayer1) {
       return {
         winner: 2,
-        player1Score: this.scorePlayer1,
-        player2Score: this.scorePlayer2,
+        player1Score: this.pointsPlayer1,
+        player2Score: this.pointsPlayer2,
       };
     } else {
       return {
         winner: null,
-        player1Score: this.scorePlayer1,
-        player2Score: this.scorePlayer2,
+        player1Score: this.pointsPlayer1,
+        player2Score: this.pointsPlayer2,
       };
     }
   }
