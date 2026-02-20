@@ -16,6 +16,8 @@ export const PATTERNS: Pattern[] = [
       [3, 0],
       [3, 3],
     ],
+    previewGridSize: 14,
+    previewGenerations: 24,
   },
   {
     name: "MWSS",
@@ -32,6 +34,8 @@ export const PATTERNS: Pattern[] = [
       [4, 4],
       [4, 5],
     ],
+    previewGridSize: 14,
+    previewGenerations: 24,
   },
   // Still Lifes
   {
@@ -42,6 +46,8 @@ export const PATTERNS: Pattern[] = [
       [1, 0],
       [1, 1],
     ],
+    previewGridSize: 6,
+    previewGenerations: 1,
   },
   {
     name: "Beehive",
@@ -53,6 +59,8 @@ export const PATTERNS: Pattern[] = [
       [2, 1],
       [2, 2],
     ],
+    previewGridSize: 8,
+    previewGenerations: 1,
   },
   {
     name: "Boat",
@@ -63,6 +71,8 @@ export const PATTERNS: Pattern[] = [
       [1, 2],
       [2, 1],
     ],
+    previewGridSize: 8,
+    previewGenerations: 1,
   },
   // Oscillators
   {
@@ -72,6 +82,8 @@ export const PATTERNS: Pattern[] = [
       [0, 1],
       [0, 2],
     ],
+    previewGridSize: 7,
+    previewGenerations: 4,
   },
   {
     name: "Toad",
@@ -83,6 +95,8 @@ export const PATTERNS: Pattern[] = [
       [1, 1],
       [1, 2],
     ],
+    previewGridSize: 8,
+    previewGenerations: 4,
   },
   {
     name: "Beacon",
@@ -94,6 +108,8 @@ export const PATTERNS: Pattern[] = [
       [3, 2],
       [3, 3],
     ],
+    previewGridSize: 8,
+    previewGenerations: 4,
   },
   // New attack patterns
   {
@@ -105,6 +121,8 @@ export const PATTERNS: Pattern[] = [
       [2, 1],
       [2, 2],
     ],
+    previewGridSize: 12,
+    previewGenerations: 20,
   },
   {
     name: "Glider up",
@@ -115,6 +133,8 @@ export const PATTERNS: Pattern[] = [
       [1, 2],
       [2, 1],
     ],
+    previewGridSize: 12,
+    previewGenerations: 17,
   },
   {
     name: "HWSS",
@@ -135,6 +155,8 @@ export const PATTERNS: Pattern[] = [
       [7, 3],
       [8, 4],
     ],
+    previewGridSize: 16,
+    previewGenerations: 25,
   },
   {
     name: "Glider Gun up",
@@ -176,6 +198,8 @@ export const PATTERNS: Pattern[] = [
       [23, 8],
       [22, 8],
     ],
+    previewGridSize: 40,
+    previewGenerations: 60,
   },
   {
     name: "Glider Gun down",
@@ -217,5 +241,7 @@ export const PATTERNS: Pattern[] = [
       [24, 1],
       [24, 0],
     ],
+    previewGridSize: 40,
+    previewGenerations: 60,
   },
 ];

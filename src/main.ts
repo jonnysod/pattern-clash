@@ -18,14 +18,13 @@ const previewCanvas1 = document.getElementById(
 const previewCanvas2 = document.getElementById(
   "previewCanvas2",
 ) as HTMLCanvasElement;
-const PREVIEW_CELL_SIZE = 10;
 //#endregion
 
 //#region Initialization
 const game = new Game(ROWS, COLS);
 const renderer = new Renderer(canvas, CELL_SIZE, game);
-const previewRenderer1 = new PreviewRenderer(previewCanvas1, PREVIEW_CELL_SIZE);
-const previewRenderer2 = new PreviewRenderer(previewCanvas2, PREVIEW_CELL_SIZE);
+const previewRenderer1 = new PreviewRenderer(previewCanvas1);
+const previewRenderer2 = new PreviewRenderer(previewCanvas2);
 
 const uiController = new UIController(
   game,

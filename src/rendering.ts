@@ -259,67 +259,231 @@ export class Renderer {
 export class PreviewRenderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
-  private cellSize: number;
-  private rows: number;
-  private cols: number;
+  private baseGrid: boolean[][] | null = null;
+  private currentGrid: boolean[][] | null = null;
+  private gridSize: number = 0;
+  private cellSize: number = 0;
+  private isPlaying: boolean = false;
+  private animationIntervalId: number | null = null;
+  private currentGeneration: number = 0;
+  private maxGenerations: number = 1;
 
-  constructor(canvas: HTMLCanvasElement, cellSize: number) {
+  constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
-    this.cellSize = cellSize;
-    this.rows = canvas.height / cellSize;
-    this.cols = canvas.width / cellSize;
   }
 
   drawPreview(pattern: Pattern | null, player: Player): void {
-    // Clear preview
+    // Stop any running animation
+    this.stopAnimation();
+    this.currentGeneration = 0;
+
+    // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // Draw grid lines
-    this.ctx.strokeStyle = "#222";
-    for (let i = 0; i <= this.rows; i++) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, i * this.cellSize);
-      this.ctx.lineTo(this.canvas.width, i * this.cellSize);
-      this.ctx.stroke();
-    }
-    for (let i = 0; i <= this.cols; i++) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(i * this.cellSize, 0);
-      this.ctx.lineTo(i * this.cellSize, this.canvas.height);
-      this.ctx.stroke();
-    }
-
     if (!pattern) {
+      this.baseGrid = null;
+      this.currentGrid = null;
+      this.drawEmptyGrid();
       return;
     }
 
-    // Wende Spieler-spezifische Transformation an
+    // Use pattern-defined values
+    this.gridSize = pattern.previewGridSize;
+    this.maxGenerations = pattern.previewGenerations;
+
+    // Apply player-specific transformation
     const playerPattern = getPatternForPlayer(pattern, player);
 
     // Calculate pattern bounds for centering
     const rows = playerPattern.cells.map(([r]) => r);
     const cols = playerPattern.cells.map(([, c]) => c);
-    const patternHeight = Math.max(...rows) - Math.min(...rows) + 1;
-    const patternWidth = Math.max(...cols) - Math.min(...cols) + 1;
+    const minRow = Math.min(...rows);
+    const maxRow = Math.max(...rows);
+    const minCol = Math.min(...cols);
+    const maxCol = Math.max(...cols);
 
-    // Center the pattern
-    const offsetRow =
-      Math.floor((this.rows - patternHeight) / 2) - Math.min(...rows);
-    const offsetCol =
-      Math.floor((this.cols - patternWidth) / 2) - Math.min(...cols);
+    const patternHeight = maxRow - minRow + 1;
+    const patternWidth = maxCol - minCol + 1;
 
-    // Draw pattern cells - IMMER GRÜN
-    this.ctx.fillStyle = "#00ff00";
+    // Calculate cell size to fill canvas exactly
+    this.cellSize = this.canvas.width / this.gridSize;
+
+    // Create base grid
+    this.baseGrid = Array(this.gridSize)
+      .fill(null)
+      .map(() => Array(this.gridSize).fill(false));
+
+    // Center pattern in grid
+    const offsetRow = Math.floor((this.gridSize - patternHeight) / 2) - minRow;
+    const offsetCol = Math.floor((this.gridSize - patternWidth) / 2) - minCol;
+
+    // Place pattern in grid
     for (const [row, col] of playerPattern.cells) {
-      const drawRow = row + offsetRow;
-      const drawCol = col + offsetCol;
-      this.ctx.fillRect(
-        drawCol * this.cellSize,
-        drawRow * this.cellSize,
-        this.cellSize - 1,
-        this.cellSize - 1,
-      );
+      const gridRow = row + offsetRow;
+      const gridCol = col + offsetCol;
+      if (
+        gridRow >= 0 &&
+        gridRow < this.gridSize &&
+        gridCol >= 0 &&
+        gridCol < this.gridSize
+      ) {
+        this.baseGrid[gridRow]![gridCol] = true;
+      }
     }
+
+    // Copy to current grid
+    this.currentGrid = this.baseGrid.map((row) => [...row]);
+
+    // Draw initial state
+    this.drawGrid();
+  }
+
+  private drawEmptyGrid(): void {
+    const cellSize = 10;
+    const size = Math.floor(
+      Math.min(this.canvas.width, this.canvas.height) / cellSize,
+    );
+
+    this.ctx.strokeStyle = "#222";
+    for (let i = 0; i <= size; i++) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, i * cellSize);
+      this.ctx.lineTo(size * cellSize, i * cellSize);
+      this.ctx.stroke();
+    }
+    for (let i = 0; i <= size; i++) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(i * cellSize, 0);
+      this.ctx.lineTo(i * cellSize, size * cellSize);
+      this.ctx.stroke();
+    }
+  }
+
+  private drawGrid(): void {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Fill canvas completely (no padding)
+    const offsetX = 0;
+    const offsetY = 0;
+
+    // Draw grid lines
+    this.ctx.strokeStyle = "#222";
+    for (let i = 0; i <= this.gridSize; i++) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(offsetX, offsetY + i * this.cellSize);
+      this.ctx.lineTo(
+        offsetX + this.gridSize * this.cellSize,
+        offsetY + i * this.cellSize,
+      );
+      this.ctx.stroke();
+    }
+    for (let i = 0; i <= this.gridSize; i++) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(offsetX + i * this.cellSize, offsetY);
+      this.ctx.lineTo(
+        offsetX + i * this.cellSize,
+        offsetY + this.gridSize * this.cellSize,
+      );
+      this.ctx.stroke();
+    }
+
+    // Draw cells
+    if (this.currentGrid) {
+      this.ctx.fillStyle = "#00ff00";
+      for (let row = 0; row < this.gridSize; row++) {
+        for (let col = 0; col < this.gridSize; col++) {
+          if (this.currentGrid[row]?.[col]) {
+            this.ctx.fillRect(
+              offsetX + col * this.cellSize,
+              offsetY + row * this.cellSize,
+              this.cellSize - 1,
+              this.cellSize - 1,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private computeNextGeneration(): void {
+    if (!this.currentGrid) return;
+
+    const newGrid: boolean[][] = Array(this.gridSize)
+      .fill(null)
+      .map(() => Array(this.gridSize).fill(false));
+
+    for (let row = 0; row < this.gridSize; row++) {
+      for (let col = 0; col < this.gridSize; col++) {
+        const neighbors = this.countNeighborsWrapping(row, col);
+        const isAlive = this.currentGrid[row]![col];
+
+        if (isAlive && (neighbors === 2 || neighbors === 3)) {
+          newGrid[row]![col] = true;
+        } else if (!isAlive && neighbors === 3) {
+          newGrid[row]![col] = true;
+        }
+      }
+    }
+
+    this.currentGrid = newGrid;
+  }
+
+  private countNeighborsWrapping(row: number, col: number): number {
+    let count = 0;
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+
+        // Wrapping with modulo
+        const newRow = (row + dr + this.gridSize) % this.gridSize;
+        const newCol = (col + dc + this.gridSize) % this.gridSize;
+
+        if (this.currentGrid![newRow]![newCol]) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  play(): void {
+    if (this.isPlaying || !this.currentGrid) return;
+    this.isPlaying = true;
+
+    this.animationIntervalId = window.setInterval(() => {
+      this.currentGeneration++;
+
+      if (this.currentGeneration >= this.maxGenerations) {
+        // Reset to base pattern
+        this.currentGeneration = 0;
+        this.currentGrid = this.baseGrid!.map((row) => [...row]);
+      } else {
+        this.computeNextGeneration();
+      }
+
+      this.drawGrid();
+    }, 80);
+  }
+
+  pause(): void {
+    this.isPlaying = false;
+    if (this.animationIntervalId !== null) {
+      clearInterval(this.animationIntervalId);
+      this.animationIntervalId = null;
+    }
+  }
+
+  stopAnimation(): void {
+    this.pause();
+  }
+
+  togglePlayPause(): boolean {
+    if (this.isPlaying) {
+      this.pause();
+    } else {
+      this.play();
+    }
+    return this.isPlaying;
   }
 }

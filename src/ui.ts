@@ -104,6 +104,7 @@ export class UIController {
     this.setupPatternButtons();
     this.setupReadyButtons();
     this.setupRestartButton();
+    this.setupPreviewToggleButtons();
   }
 
   private setupCanvasClick(): void {
@@ -238,6 +239,8 @@ export class UIController {
         this.selectedPattern1 = PATTERNS[patternIndex]!;
         this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
         this.updatePatternInfo(1, this.selectedPattern1);
+        // Reset preview toggle button
+        document.getElementById("previewToggle1")!.textContent = "▶";
       });
     });
 
@@ -252,6 +255,8 @@ export class UIController {
         this.selectedPattern2 = PATTERNS[patternIndex]!;
         this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
         this.updatePatternInfo(2, this.selectedPattern2);
+        // Reset preview toggle button
+        document.getElementById("previewToggle2")!.textContent = "▶";
       });
     });
   }
@@ -329,6 +334,25 @@ export class UIController {
       // Clear pattern info
       this.updatePatternInfo(1, null);
       this.updatePatternInfo(2, null);
+
+      // Reset preview toggle buttons
+      document.getElementById("previewToggle1")!.textContent = "▶";
+      document.getElementById("previewToggle2")!.textContent = "▶";
+    });
+  }
+
+  private setupPreviewToggleButtons(): void {
+    const toggle1 = document.getElementById("previewToggle1")!;
+    const toggle2 = document.getElementById("previewToggle2")!;
+
+    toggle1.addEventListener("click", () => {
+      const isPlaying = this.previewRenderer1.togglePlayPause();
+      toggle1.textContent = isPlaying ? "⏸" : "▶";
+    });
+
+    toggle2.addEventListener("click", () => {
+      const isPlaying = this.previewRenderer2.togglePlayPause();
+      toggle2.textContent = isPlaying ? "⏸" : "▶";
     });
   }
 
@@ -545,6 +569,8 @@ export class UIController {
 
       this.enablePlayerControls(1);
       this.disablePlayerControls(2);
+      this.enablePreview(1);
+      this.disablePreview(2);
     } else {
       // Player 2 is active
       player1Btn.style.opacity = "0.5";
@@ -554,8 +580,46 @@ export class UIController {
 
       this.enablePlayerControls(2);
       this.disablePlayerControls(1);
+      this.enablePreview(2);
+      this.disablePreview(1);
     }
+
     this.updatePatternButtonStates();
+  }
+
+  private enablePreview(player: Player): void {
+    const canvas = document.getElementById(
+      player === 1 ? "previewCanvas1" : "previewCanvas2",
+    )!;
+    const toggle = document.getElementById(
+      player === 1 ? "previewToggle1" : "previewToggle2",
+    )! as HTMLButtonElement;
+
+    canvas.style.opacity = "1";
+    toggle.style.opacity = "1";
+    toggle.disabled = false;
+    toggle.textContent = "▶";
+  }
+
+  private disablePreview(player: Player): void {
+    const canvas = document.getElementById(
+      player === 1 ? "previewCanvas1" : "previewCanvas2",
+    )!;
+    const toggle = document.getElementById(
+      player === 1 ? "previewToggle1" : "previewToggle2",
+    )! as HTMLButtonElement;
+    const renderer =
+      player === 1 ? this.previewRenderer1 : this.previewRenderer2;
+    const pattern =
+      player === 1 ? this.selectedPattern1 : this.selectedPattern2;
+
+    // Reset preview to initial state
+    renderer.drawPreview(pattern, player);
+
+    canvas.style.opacity = "0.3";
+    toggle.style.opacity = "0.3";
+    toggle.disabled = true;
+    toggle.textContent = "▶";
   }
 
   private enablePlayerControls(player: Player): void {
