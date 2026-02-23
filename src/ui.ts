@@ -690,12 +690,6 @@ export class UIController {
       player === 1
         ? document.querySelectorAll(".player1-pattern")
         : document.querySelectorAll(".player2-pattern");
-    const rotateLeft = document.getElementById(
-      player === 1 ? "rotateLeft1" : "rotateLeft2",
-    )! as HTMLButtonElement;
-    const rotateRight = document.getElementById(
-      player === 1 ? "rotateRight1" : "rotateRight2",
-    )! as HTMLButtonElement;
 
     patterns.forEach((btn) => {
       (btn as HTMLButtonElement).disabled = false;
@@ -732,12 +726,6 @@ export class UIController {
       player === 1
         ? document.querySelectorAll(".player1-pattern")
         : document.querySelectorAll(".player2-pattern");
-    const rotateLeft = document.getElementById(
-      player === 1 ? "rotateLeft1" : "rotateLeft2",
-    )! as HTMLButtonElement;
-    const rotateRight = document.getElementById(
-      player === 1 ? "rotateRight1" : "rotateRight2",
-    )! as HTMLButtonElement;
 
     patterns.forEach((btn) => {
       (btn as HTMLButtonElement).disabled = true;
