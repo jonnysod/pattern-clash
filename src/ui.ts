@@ -377,6 +377,9 @@ export class UIController {
       document.getElementById("previewToggle1")!.textContent = "▶";
       document.getElementById("previewToggle2")!.textContent = "▶";
     });
+    document.getElementById("showBoardBtn")!.addEventListener("click", () => {
+      document.getElementById("winnerOverlay")!.style.display = "none";
+    });
   }
 
   private setupPreviewToggleButtons(): void {
