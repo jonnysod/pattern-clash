@@ -5,7 +5,10 @@ import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
 import { rotatePattern, getPatternForPlayer } from "./patternUtils.js";
-const TURN_DURATION = 10000; // 10 seconds in milliseconds
+const TURN_DURATION = 7000; // 7 seconds in milliseconds
+const MAX_PAUSES_PER_PLAYER = 3;
+const PAUSE_DURATION = 10000;
+const PAUSE_DECISION_DURATION = 3000;
 
 //#region TurnTimer Class
 class TurnTimer {
@@ -75,6 +78,8 @@ export class UIController {
   // Live phase turn system (can be disabled for online multiplayer)
   private enableTurnRestriction: boolean = true; // Set to false for free-for-all
   private turnTimer: TurnTimer | null = null;
+  private pauseDecisionTimer: TurnTimer | null = null;
+  private pauseDecisionOverlayVisible: boolean = false;
 
   constructor(
     game: Game,
@@ -125,6 +130,14 @@ export class UIController {
         return; // Not this player's turn
       }
 
+      // During pause: only pausing player can place
+      if (
+        this.game.isPaused &&
+        this.game.pausingPlayer !== this.getClickingPlayer(e)
+      ) {
+        return;
+      }
+
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -159,7 +172,10 @@ export class UIController {
           // In placement phase: switch turn as before
           // In live phase: switch turn and restart timer
           if (this.game.isLivePhase) {
-            this.switchTurnLivePhase();
+            if (!this.game.isPaused) {
+              this.switchTurnLivePhase();
+            }
+            // During pause: don't switch turn, just update buttons
           } else {
             this.switchTurn();
           }
@@ -263,23 +279,35 @@ export class UIController {
 
   private setupReadyButtons(): void {
     document.getElementById("ready1Btn")!.addEventListener("click", () => {
+      if (this.game.isLivePhase) {
+        // Live phase: Pause button
+        this.startPause(1);
+        return;
+      }
+
       if (this.game.isRunning) return;
 
       this.player1Ready = true;
       const btn = document.getElementById("ready1Btn")! as HTMLButtonElement;
       btn.disabled = true;
-      document.getElementById("ready1Btn")!.style.opacity = "0.5";
+      btn.style.opacity = "0.5";
 
       this.switchTurn();
     });
 
     document.getElementById("ready2Btn")!.addEventListener("click", () => {
+      if (this.game.isLivePhase) {
+        // Live phase: Pause button
+        this.startPause(2);
+        return;
+      }
+
       if (this.game.isRunning) return;
 
       this.player2Ready = true;
       const btn = document.getElementById("ready2Btn")! as HTMLButtonElement;
       btn.disabled = true;
-      document.getElementById("ready2Btn")!.style.opacity = "0.5";
+      btn.style.opacity = "0.5";
 
       this.switchTurn();
     });
@@ -311,6 +339,14 @@ export class UIController {
       this.selectedPattern1 = null;
       this.selectedPattern2 = null;
 
+      // Reset pause state
+      if (this.pauseDecisionTimer) {
+        this.pauseDecisionTimer.stop();
+        this.pauseDecisionTimer = null;
+      }
+      document.getElementById("pauseDecisionOverlay")!.style.display = "none";
+      this.pauseDecisionOverlayVisible = false;
+
       // Re-enable controls
       this.enablePlayerControls(1);
       this.updateActivePlayerUI();
@@ -324,8 +360,10 @@ export class UIController {
       const ready2 = document.getElementById("ready2Btn")! as HTMLButtonElement;
       ready1.disabled = false;
       ready1.style.opacity = "1";
+      ready1.textContent = "Ready!";
       ready2.disabled = false;
       ready2.style.opacity = "1";
+      ready2.textContent = "Ready!";
 
       // Clear previews
       this.previewRenderer1.drawPreview(null, 1);
@@ -358,6 +396,11 @@ export class UIController {
 
   private animate = (): void => {
     if (!this.game.isRunning) return;
+    if (this.game.isPaused) {
+      // Keep animation loop alive but don't advance
+      this.animationId = requestAnimationFrame(this.animate);
+      return;
+    }
 
     this.game.computeNextGeneration();
     this.renderer.drawGrid();
@@ -585,6 +628,26 @@ export class UIController {
     }
 
     this.updatePatternButtonStates();
+    // Update pause button states in live phase
+    if (this.game.isLivePhase) {
+      this.updatePauseButtonLabels();
+
+      const btn1 = document.getElementById("ready1Btn")! as HTMLButtonElement;
+      const btn2 = document.getElementById("ready2Btn")! as HTMLButtonElement;
+
+      if (this.game.isPaused) {
+        // During pause: only pausing player can interact
+        btn1.disabled = true;
+        btn1.style.opacity = "0.3";
+        btn2.disabled = true;
+        btn2.style.opacity = "0.3";
+      } else {
+        btn1.disabled = this.activePlayer !== 1 || this.game.pausesPlayer1 <= 0;
+        btn1.style.opacity = btn1.disabled ? "0.3" : "1";
+        btn2.disabled = this.activePlayer !== 2 || this.game.pausesPlayer2 <= 0;
+        btn2.style.opacity = btn2.disabled ? "0.3" : "1";
+      }
+    }
   }
 
   private enablePreview(player: Player): void {
@@ -639,15 +702,22 @@ export class UIController {
       (btn as HTMLButtonElement).style.opacity = "1";
     });
 
-    // Enable ready button if not already clicked
+    // Enable ready/pause button
     const readyBtn = document.getElementById(
       player === 1 ? "ready1Btn" : "ready2Btn",
     )! as HTMLButtonElement;
-    const isReady = player === 1 ? this.player1Ready : this.player2Ready;
 
-    if (!isReady) {
-      readyBtn.disabled = false;
-      readyBtn.style.opacity = "1";
+    if (this.game.isLivePhase) {
+      const pausesLeft =
+        player === 1 ? this.game.pausesPlayer1 : this.game.pausesPlayer2;
+      readyBtn.disabled = pausesLeft <= 0;
+      readyBtn.style.opacity = pausesLeft > 0 ? "1" : "0.3";
+    } else {
+      const isReady = player === 1 ? this.player1Ready : this.player2Ready;
+      if (!isReady) {
+        readyBtn.disabled = false;
+        readyBtn.style.opacity = "1";
+      }
     }
     // Enable surrender button
     const surrenderBtn = document.getElementById(
@@ -717,6 +787,9 @@ export class UIController {
     // Re-enable player controls for live phase
     this.enablePlayerControls(1);
     this.enablePlayerControls(2);
+
+    // Convert ready buttons to pause buttons
+    this.updatePauseButtonLabels();
 
     // Start turn timer
     this.activePlayer = 1; // Reset to player 1
@@ -793,5 +866,157 @@ export class UIController {
 
     // Restart timer
     this.startTurnTimer();
+  }
+
+  private startPause(player: Player): void {
+    // Validate
+    const pausesLeft =
+      player === 1 ? this.game.pausesPlayer1 : this.game.pausesPlayer2;
+    if (pausesLeft <= 0 || this.game.isPaused) return;
+    // During pause decision dialog, the deciding player is allowed to pause
+    // even though activePlayer hasn't switched yet
+    if (this.activePlayer !== player && !this.pauseDecisionOverlayVisible)
+      return;
+
+    // Deduct pause
+    if (player === 1) {
+      this.game.pausesPlayer1--;
+    } else {
+      this.game.pausesPlayer2--;
+    }
+
+    // Set active player to pausing player (important for counter-pause)
+    this.activePlayer = player;
+
+    // Stop simulation
+    this.game.isPaused = true;
+    this.game.pausingPlayer = player;
+
+    // Stop turn timer
+    if (this.turnTimer) {
+      this.turnTimer.stop();
+    }
+
+    // Update UI
+    this.updatePauseButtonLabels();
+    this.updateActivePlayerUI();
+
+    // Start pause countdown (orange bar)
+    this.turnTimer = new TurnTimer(
+      PAUSE_DURATION,
+      () => this.onPauseEnd(),
+      (remaining, total) => {
+        const barElement = document.getElementById("turnTimerBar")!;
+        const percentage = (remaining / total) * 100;
+        barElement.style.width = `${percentage}%`;
+        barElement.style.backgroundColor = "#ffaa00";
+      },
+    );
+    this.turnTimer.start();
+  }
+
+  private onPauseEnd(): void {
+    const pausingPlayer = this.game.pausingPlayer;
+    const opponent: Player = pausingPlayer === 1 ? 2 : 1;
+
+    // Check if opponent can counter-pause
+    const opponentPauses =
+      opponent === 1 ? this.game.pausesPlayer1 : this.game.pausesPlayer2;
+
+    if (opponentPauses > 0) {
+      // Keep paused while decision dialog is shown
+      this.game.pausingPlayer = null; // Nobody can place during decision
+      this.showPauseDecisionDialog(opponent);
+    } else {
+      // Resume fully
+      this.game.isPaused = false;
+      this.game.pausingPlayer = null;
+      this.resumeNormalPlay(opponent);
+    }
+  }
+
+  private showPauseDecisionDialog(player: Player): void {
+    this.pauseDecisionOverlayVisible = true;
+
+    const overlay = document.getElementById("pauseDecisionOverlay")!;
+    const title = document.getElementById("pauseDecisionTitle")!;
+    const timerBar = document.getElementById("pauseDecisionTimerBar")!;
+
+    const playerColor = player === 1 ? "#44dddd" : "#dd44dd";
+    title.textContent = `Spieler ${player}: Auch pausieren?`;
+    title.style.color = playerColor;
+    timerBar.style.backgroundColor = playerColor;
+
+    overlay.style.display = "flex";
+
+    // Start decision timer
+    this.pauseDecisionTimer = new TurnTimer(
+      PAUSE_DECISION_DURATION,
+      () => this.onPauseDecision(player, false), // Timeout = No
+      (remaining, total) => {
+        const percentage = (remaining / total) * 100;
+        timerBar.style.width = `${percentage}%`;
+      },
+    );
+    this.pauseDecisionTimer.start();
+
+    // Setup dialog buttons
+    const yesBtn = document.getElementById("pauseDecisionYes")!;
+    const noBtn = document.getElementById("pauseDecisionNo")!;
+
+    // Remove old listeners by cloning
+    const newYes = yesBtn.cloneNode(true) as HTMLElement;
+    const newNo = noBtn.cloneNode(true) as HTMLElement;
+    yesBtn.parentNode!.replaceChild(newYes, yesBtn);
+    noBtn.parentNode!.replaceChild(newNo, noBtn);
+
+    newYes.addEventListener("click", () => this.onPauseDecision(player, true));
+    newNo.addEventListener("click", () => this.onPauseDecision(player, false));
+  }
+
+  private onPauseDecision(player: Player, accepted: boolean): void {
+    if (!this.pauseDecisionOverlayVisible) return;
+    this.pauseDecisionOverlayVisible = false;
+
+    // Stop decision timer
+    if (this.pauseDecisionTimer) {
+      this.pauseDecisionTimer.stop();
+      this.pauseDecisionTimer = null;
+    }
+
+    // Hide dialog
+    document.getElementById("pauseDecisionOverlay")!.style.display = "none";
+
+    this.game.isPaused = false;
+    this.game.pausingPlayer = null;
+
+    if (accepted) {
+      this.activePlayer = player;
+      this.startPause(player);
+    } else {
+      this.resumeNormalPlay(player);
+    }
+  }
+
+  private resumeNormalPlay(nextPlayer: Player): void {
+    this.activePlayer = nextPlayer;
+    this.updateActivePlayerUI();
+    this.startTurnTimer();
+
+    // Resume animation if not already running
+    if (this.game.isLivePhase && !this.game.isRunning) {
+      this.game.isRunning = true;
+      this.animate();
+    }
+  }
+
+  private updatePauseButtonLabels(): void {
+    const btn1 = document.getElementById("ready1Btn")!;
+    const btn2 = document.getElementById("ready2Btn")!;
+
+    if (this.game.isLivePhase) {
+      btn1.textContent = `Pause ${this.game.pausesPlayer1}/${MAX_PAUSES_PER_PLAYER}`;
+      btn2.textContent = `Pause ${this.game.pausesPlayer2}/${MAX_PAUSES_PER_PLAYER}`;
+    }
   }
 }

@@ -455,6 +455,97 @@
       </div>
     </div>
 
+    <!-- Pause decision overlay -->
+    <div
+      id="pauseDecisionOverlay"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background-color: #2a2a2a;
+          padding: 30px 50px;
+          border-radius: 10px;
+          text-align: center;
+        "
+      >
+        <h2
+          id="pauseDecisionTitle"
+          style="font-size: 28px; margin-bottom: 15px; color: #ffaa00"
+        >
+          Auch pausieren?
+        </h2>
+        <div
+          style="
+            width: 300px;
+            height: 6px;
+            background-color: #333;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 15px auto;
+            border: 1px solid #666;
+          "
+        >
+          <div
+            id="pauseDecisionTimerBar"
+            style="
+              height: 100%;
+              width: 100%;
+              background-color: #ffaa00;
+              transition: width 0.1s linear;
+            "
+          ></div>
+        </div>
+        <div
+          style="
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 20px;
+          "
+        >
+          <button
+            id="pauseDecisionYes"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #44aa44;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Ja
+          </button>
+          <button
+            id="pauseDecisionNo"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #aa4444;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Nein
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <script type="module" src="./dist/main.js"></script>
   </body>
 </html>

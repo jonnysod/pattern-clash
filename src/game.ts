@@ -27,6 +27,12 @@ export class Game {
   // Surrender tracking
   surrenderedPlayer: Player | null = null;
 
+  // Pause tracking
+  pausesPlayer1: number = 3;
+  pausesPlayer2: number = 3;
+  isPaused: boolean = false;
+  pausingPlayer: Player | null = null;
+
   constructor(rows: number, cols: number) {
     this.rows = rows;
     this.cols = cols;
@@ -48,6 +54,10 @@ export class Game {
     this.resetPoints();
     this.currentGeneration = 0;
     this.surrenderedPlayer = null;
+    this.pausesPlayer1 = 3;
+    this.pausesPlayer2 = 3;
+    this.isPaused = false;
+    this.pausingPlayer = null;
   }
 
   private resetPoints(): void {
