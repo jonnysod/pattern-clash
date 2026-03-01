@@ -3,35 +3,27 @@
 import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { UIController } from "./ui.js";
-
-//#region Canvas Setup
-const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
-const CELL_SIZE = 7;
-const COLS = canvas.width / CELL_SIZE;
-const ROWS = canvas.height / CELL_SIZE;
-//#endregion
-
-//#region Preview Canvas Setup
-const previewCanvas1 = document.getElementById(
-  "previewCanvas1",
-) as HTMLCanvasElement;
-const previewCanvas2 = document.getElementById(
-  "previewCanvas2",
-) as HTMLCanvasElement;
-//#endregion
+import { createDOMRefs } from "./domRefs.js";
+import { CONFIG } from "./config.js";
 
 //#region Initialization
+const dom = createDOMRefs();
+
+const COLS = CONFIG.CANVAS_WIDTH / CONFIG.CELL_SIZE;
+const ROWS = CONFIG.CANVAS_HEIGHT / CONFIG.CELL_SIZE;
+
 const game = new Game(ROWS, COLS);
-const renderer = new Renderer(canvas, CELL_SIZE, game);
-const previewRenderer1 = new PreviewRenderer(previewCanvas1);
-const previewRenderer2 = new PreviewRenderer(previewCanvas2);
+const renderer = new Renderer(dom.gameCanvas, CONFIG.CELL_SIZE, game);
+const previewRenderer1 = new PreviewRenderer(dom.previewCanvas1);
+const previewRenderer2 = new PreviewRenderer(dom.previewCanvas2);
 
 const uiController = new UIController(
   game,
+  dom,
   renderer,
   previewRenderer1,
   previewRenderer2,
-  CELL_SIZE,
+  CONFIG.CELL_SIZE,
 );
 
 // Initial render

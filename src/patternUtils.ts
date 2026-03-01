@@ -1,34 +1,41 @@
-// Pattern rotation and transformation utilities
+// Pattern rotation and player-specific transformations
 
 import type { Pattern, Player } from "./types.js";
 
-export function rotatePattern(pattern: Pattern, degrees: number): Pattern {
-  const rotations = degrees / 90;
-  let cells = pattern.cells;
+// Mirror pattern horizontally (flip columns)
+export function mirrorPatternHorizontal(pattern: Pattern): Pattern {
+  if (pattern.cells.length === 0) return pattern;
 
-  for (let i = 0; i < rotations; i++) {
-    // Rotate 90° clockwise: (row, col) -> (col, -row)
-    cells = cells.map(([row, col]) => [col, -row]);
-  }
+  const maxCol = Math.max(...pattern.cells.map(([, c]) => c));
+  const mirroredCells: [number, number][] = pattern.cells.map(([r, c]) => [
+    r,
+    maxCol - c,
+  ]);
 
-  return {
-    name: pattern.name,
-    cells: cells,
-  };
+  return { ...pattern, cells: mirroredCells };
 }
 
-export function mirrorPatternHorizontally(pattern: Pattern): Pattern {
-  // Spiegele Pattern horizontal für Spieler 2
-  return {
-    name: pattern.name,
-    cells: pattern.cells.map(([row, col]) => [row, -col]),
-  };
+// Rotate pattern 90° clockwise
+export function rotatePattern(pattern: Pattern): Pattern {
+  if (pattern.cells.length === 0) return pattern;
+
+  // [row, col] → [col, maxRow - row]
+  const maxRow = Math.max(...pattern.cells.map(([r]) => r));
+  const rotatedCells: [number, number][] = pattern.cells.map(([r, c]) => [
+    c,
+    maxRow - r,
+  ]);
+
+  return { ...pattern, cells: rotatedCells };
 }
 
-export function getPatternForPlayer(pattern: Pattern, player: Player): Pattern {
-  if (player === 2) {
-    // Spieler 2: Spiegele Patterns horizontal (wandern nach links)
-    return mirrorPatternHorizontally(pattern);
-  }
-  return pattern;
+// Get pattern transformed for a specific player.
+// Player 1: original (patterns face right by default).
+// Player 2: horizontally mirrored (patterns face left).
+export function getPatternForPlayer(
+  pattern: Pattern,
+  player: Player,
+): Pattern {
+  if (player === 1) return pattern;
+  return mirrorPatternHorizontal(pattern);
 }
