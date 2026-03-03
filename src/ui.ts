@@ -1,4 +1,4 @@
-// UI Controller - orchestrates turn management, pause system, and rendering
+// UI Controller - orchestrates chess clock turns, simulation, and tactical phases
 
 import type { Pattern, Player } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
@@ -7,7 +7,6 @@ import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { TurnManager } from "./turnManager.js";
-import { PauseManager } from "./pauseManager.js";
 import { CONFIG } from "./config.js";
 
 export class UIController {
@@ -19,14 +18,10 @@ export class UIController {
   private cellSize: number;
 
   private turns: TurnManager;
-  private pauses: PauseManager;
 
   private selectedPattern1: Pattern | null = null;
   private selectedPattern2: Pattern | null = null;
   private animationId: number | null = null;
-
-  // Hot-seat turn restriction (disable for online multiplayer)
-  private enableTurnRestriction: boolean = true;
 
   constructor(
     game: Game,
@@ -43,32 +38,24 @@ export class UIController {
     this.previewRenderer2 = previewRenderer2;
     this.cellSize = cellSize;
 
-    // Create sub-managers
     this.turns = new TurnManager(game, dom);
-    this.pauses = new PauseManager(game, dom);
 
-    // Wire up callbacks
+    // Wire callbacks
     this.turns.onTurnSwitch = () => this.updateActivePlayerUI();
-    this.turns.onLivePhaseStart = () => this.startLivePhase();
-
-    this.pauses.onPauseStart = (player) => {
-      this.turns.activePlayer = player;
-      this.turns.stopTimer();
-      this.updatePauseButtonLabels();
-      this.updateActivePlayerUI();
-    };
-    this.pauses.onPauseEnd = (nextPlayer) => {
-      this.turns.activePlayer = nextPlayer;
-      this.updateActivePlayerUI();
-      this.turns.startTurnTimer();
-    };
+    this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
 
     this.setupEventListeners();
 
     // Initialize displays
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
-    this.updateActivePlayerUI();
+
+    // Wait for start button
+    this.disableAllControls();
+    this.dom.startGameBtn.addEventListener("click", () => {
+      this.dom.startOverlay.style.display = "none";
+      this.startPlacementPhase();
+    });
   }
 
   //#region Event Setup
@@ -77,7 +64,7 @@ export class UIController {
     this.setupCanvasHover();
     this.setupSurrenderButtons();
     this.setupPatternButtons();
-    this.setupReadyButtons();
+    this.setupActionButtons();
     this.setupRestartButton();
     this.setupPreviewToggleButtons();
   }
@@ -86,33 +73,20 @@ export class UIController {
     this.dom.gameCanvas.addEventListener("click", (e) => {
       const phase = this.game.phase;
 
-      // Only allow clicks in placement or live/paused phases
-      if (phase === "ended" || phase === "pauseDecision") return;
+      // Only allow placement in placement or tactical phase
+      if (phase !== "placement" && phase !== "tactical") return;
 
-      // In live phase: check turn restriction
-      if (
-        this.game.isSimulationRunning &&
-        this.enableTurnRestriction &&
-        !this.isActivePlayerClick()
-      ) {
-        return;
-      }
+      const player = this.turns.activePlayer;
 
-      // During pause: only pausing player can place
-      if (
-        this.game.isPaused &&
-        this.game.pausingPlayer !== this.turns.activePlayer
-      ) {
-        return;
-      }
+      // Only active player can place
+      if (this.turns.isPlayerDone(player)) return;
 
       const rect = this.dom.gameCanvas.getBoundingClientRect();
       const col = Math.floor((e.clientX - rect.left) / this.cellSize);
       const row = Math.floor((e.clientY - rect.top) / this.cellSize);
 
-      const player = this.turns.activePlayer;
-      const pattern = player === 1 ? this.selectedPattern1 : this.selectedPattern2;
-
+      const pattern =
+        player === 1 ? this.selectedPattern1 : this.selectedPattern2;
       if (!pattern) return;
 
       const playerPattern = getPatternForPlayer(pattern, player);
@@ -131,19 +105,18 @@ export class UIController {
         placementCol = col - maxC;
       }
 
-      const success = this.game.placePattern(row, placementCol, playerPattern, player, true);
+      const success = this.game.placePattern(
+        row,
+        placementCol,
+        playerPattern,
+        player,
+        true,
+      );
 
       if (success) {
         this.updatePointsDisplay();
-
-        if (this.game.isSimulationRunning) {
-          if (!this.game.isPaused) {
-            this.turns.switchTurnLivePhase();
-          }
-          // During pause: don't switch, just let them keep placing
-        } else {
-          this.turns.switchTurnPlacement();
-        }
+        this.turns.notifyPlacement();
+        this.updatePatternButtonStates();
       } else {
         this.renderer.flashInvalidPlacement(col, row);
       }
@@ -152,16 +125,10 @@ export class UIController {
     });
   }
 
-  private isActivePlayerClick(): boolean {
-    if (!this.enableTurnRestriction) return true;
-    return true; // In hot-seat, active player is always the one clicking
-  }
-
   private setupCanvasHover(): void {
     this.dom.gameCanvas.addEventListener("mousemove", (e) => {
-      if (this.game.phase === "ended") return;
-      // Don't show hover during pure simulation (non-live)
-      if (this.game.isSimulationRunning && !this.game.isLive && !this.game.isPaused) return;
+      const phase = this.game.phase;
+      if (phase !== "placement" && phase !== "tactical") return;
 
       const rect = this.dom.gameCanvas.getBoundingClientRect();
       const col = Math.floor((e.clientX - rect.left) / this.cellSize);
@@ -179,6 +146,8 @@ export class UIController {
     this.dom.surrender1Btn.addEventListener("click", () => {
       if (confirm("Surrender? Your opponent wins!")) {
         this.game.surrender(1);
+        this.turns.stopClock();
+        this.stopAnimation();
         this.showWinner();
       }
     });
@@ -186,6 +155,8 @@ export class UIController {
     this.dom.surrender2Btn.addEventListener("click", () => {
       if (confirm("Surrender? Your opponent wins!")) {
         this.game.surrender(2);
+        this.turns.stopClock();
+        this.stopAnimation();
         this.showWinner();
       }
     });
@@ -213,20 +184,16 @@ export class UIController {
     }
   }
 
-  private setupReadyButtons(): void {
+  private setupActionButtons(): void {
     this.dom.ready1Btn.addEventListener("click", () => {
-      if (this.game.isSimulationRunning) {
-        this.pauses.startPause(1);
-      } else if (this.game.isPlacement) {
-        this.turns.markReady(1);
+      if (this.turns.activePlayer === 1) {
+        this.turns.onActionButton();
       }
     });
 
     this.dom.ready2Btn.addEventListener("click", () => {
-      if (this.game.isSimulationRunning) {
-        this.pauses.startPause(2);
-      } else if (this.game.isPlacement) {
-        this.turns.markReady(2);
+      if (this.turns.activePlayer === 2) {
+        this.turns.onActionButton();
       }
     });
   }
@@ -254,18 +221,46 @@ export class UIController {
   }
   //#endregion
 
-  //#region Animation Loop
-  private animate = (): void => {
+  //#region Phase Management
+  private startPlacementPhase(): void {
+    this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
+    this.turns.startClock(CONFIG.CHESS_CLOCK_PLACEMENT_SEC);
+    this.updateActivePlayerUI();
+  }
+
+  private onPlacementPhaseEnd(): void {
+    this.game.setPhase("simulation");
+    this.disableAllControls();
+    this.dom.turnTimerContainer.style.visibility = "hidden";
+    this.startSimulation();
+  }
+
+  private startSimulation(): void {
+    this.stopAnimation();
+    this.animateSimulation();
+  }
+
+  private startTacticalPhase(): void {
+    this.stopAnimation();
+    this.game.setPhase("tactical");
+
+    this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
+    this.turns.startClock(CONFIG.CHESS_CLOCK_TACTICAL_SEC);
+    this.updateActivePlayerUI();
+  }
+
+  private onTacticalPhaseEnd(): void {
+    this.game.setPhase("simulation");
+    this.disableAllControls();
+    this.dom.turnTimerContainer.style.visibility = "hidden";
+    this.startSimulation();
+  }
+  //#endregion
+
+  //#region Animation
+  private animateSimulation(): void {
     if (this.game.isEnded) {
       this.showWinner();
-      return;
-    }
-
-    if (!this.game.isSimulationRunning) return;
-
-    if (this.game.isPaused || this.game.isPauseDecision) {
-      // Keep loop alive but don't advance
-      this.animationId = requestAnimationFrame(this.animate);
       return;
     }
 
@@ -279,29 +274,128 @@ export class UIController {
       return;
     }
 
-    setTimeout(() => {
-      this.animationId = requestAnimationFrame(this.animate);
-    }, CONFIG.ANIMATION_INTERVAL_MS);
-  };
-  //#endregion
+    // Check for tactical phase trigger
+    if (this.game.shouldTriggerTactical()) {
+      this.startTacticalPhase();
+      // Start slow animation alongside placement
+      this.animateTactical();
+      return;
+    }
 
-  //#region Live Phase
-  private startLivePhase(): void {
-    this.game.setPhase("live");
-    this.dom.turnTimerContainer.style.visibility = "visible";
+    const delay = 1000 / CONFIG.FPS_FAST;
+    this.animationId = window.setTimeout(() => {
+      requestAnimationFrame(() => this.animateSimulation());
+    }, delay);
+  }
 
-    this.animate();
+  private animateTactical(): void {
+    if (this.game.isEnded) {
+      this.turns.stopClock();
+      this.showWinner();
+      return;
+    }
 
-    this.enablePlayerControls(1);
-    this.enablePlayerControls(2);
-    this.updatePauseButtonLabels();
+    // If phase switched back to simulation, hand off to fast animation
+    if (this.game.isSimulation) {
+      this.startSimulation();
+      return;
+    }
 
-    this.turns.startLiveTurnCycle();
-    this.updateActivePlayerUI();
+    this.game.computeNextGeneration();
+    this.renderer.drawGrid();
+    this.updatePointsDisplay();
+    this.updateGenerationDisplay();
+
+    if (this.game.isEnded) {
+      this.turns.stopClock();
+      this.showWinner();
+      return;
+    }
+
+    const delay = 1000 / CONFIG.FPS_SLOW;
+    this.animationId = window.setTimeout(() => {
+      requestAnimationFrame(() => this.animateTactical());
+    }, delay);
+  }
+
+  private stopAnimation(): void {
+    if (this.animationId !== null) {
+      clearTimeout(this.animationId);
+      this.animationId = null;
+    }
   }
   //#endregion
 
-  //#region UI Updates
+  //#region Hover Preview
+  private drawHoverPreview(row: number, col: number): void {
+    this.renderer.drawGrid();
+
+    const player = this.turns.activePlayer;
+    const pattern =
+      player === 1 ? this.selectedPattern1 : this.selectedPattern2;
+    if (!pattern) return;
+
+    const playerPattern = getPatternForPlayer(pattern, player);
+
+    // P2: offset so pattern appears left of cursor
+    let offsetCol = 0;
+    if (player === 2) {
+      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
+      offsetCol = -maxC;
+    }
+
+    // Validate against mouse position
+    const isValid = this.game.zones.isValidPlacement(col, player);
+
+    const ctx = this.dom.gameCanvas.getContext("2d")!;
+    ctx.fillStyle = isValid ? "rgba(0, 255, 0, 0.3)" : "rgba(255, 0, 0, 0.3)";
+
+    for (const [rowOff, colOff] of playerPattern.cells) {
+      const r = row + rowOff;
+      const c = col + colOff + offsetCol;
+      if (r >= 0 && r < this.game.rows && c >= 0 && c < this.game.cols) {
+        ctx.fillRect(
+          c * this.cellSize,
+          r * this.cellSize,
+          this.cellSize - 1,
+          this.cellSize - 1,
+        );
+      }
+    }
+  }
+  //#endregion
+
+  //#region UI State Updates
+  private updateActivePlayerUI(): void {
+    const active = this.turns.activePlayer;
+
+    // Player header glow
+    this.dom.player1Btn.style.opacity = active === 1 ? "1" : "0.5";
+    this.dom.player1Btn.style.boxShadow =
+      active === 1 ? `0 0 15px ${CONFIG.COLOR_PLAYER1}` : "none";
+    this.dom.player2Btn.style.opacity = active === 2 ? "1" : "0.5";
+    this.dom.player2Btn.style.boxShadow =
+      active === 2 ? `0 0 15px ${CONFIG.COLOR_PLAYER2}` : "none";
+
+    // Pattern buttons
+    this.enablePlayerPatterns(active);
+    this.disablePlayerPatterns(active === 1 ? 2 : 1);
+    this.updatePatternButtonStates();
+
+    // Preview
+    this.enablePreview(active);
+    this.disablePreview(active === 1 ? 2 : 1);
+
+    // Action buttons (Pass/Done)
+    this.turns.updateButtonText();
+
+    // Surrender buttons - both always active during placement/tactical
+    this.dom.surrender1Btn.disabled = false;
+    this.dom.surrender1Btn.style.opacity = "1";
+    this.dom.surrender2Btn.disabled = false;
+    this.dom.surrender2Btn.style.opacity = "1";
+  }
+
   private updatePointsDisplay(): void {
     this.dom.points1.textContent = this.game.pointsPlayer1.toString();
     this.dom.points2.textContent = this.game.pointsPlayer2.toString();
@@ -323,81 +417,6 @@ export class UIController {
     } else {
       nameEl.textContent = "-";
       costEl.textContent = "Cost: -";
-    }
-  }
-
-  private drawHoverPreview(row: number, col: number): void {
-    this.renderer.drawGrid();
-
-    const player = this.turns.activePlayer;
-    const pattern = player === 1 ? this.selectedPattern1 : this.selectedPattern2;
-    if (!pattern) return;
-
-    const playerPattern = getPatternForPlayer(pattern, player);
-
-    // P2: offset so pattern appears left of cursor (mouse = top-right corner)
-    let offsetCol = 0;
-    if (player === 2) {
-      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-      offsetCol = -maxC;
-    }
-
-    // Validate against mouse position (both players: mouse must be in their zone)
-    const isValid = this.game.zones.isValidPlacement(col, player);
-
-    const ctx = this.dom.gameCanvas.getContext("2d")!;
-    ctx.fillStyle = isValid ? "rgba(0, 255, 0, 0.3)" : "rgba(255, 0, 0, 0.3)";
-
-    for (const [rowOff, colOff] of playerPattern.cells) {
-      const r = row + rowOff;
-      const c = col + colOff + offsetCol;
-      if (r >= 0 && r < this.game.rows && c >= 0 && c < this.game.cols) {
-        ctx.fillRect(
-          c * this.cellSize,
-          r * this.cellSize,
-          this.cellSize - 1,
-          this.cellSize - 1,
-        );
-      }
-    }
-  }
-
-  private updateActivePlayerUI(): void {
-    const active = this.turns.activePlayer;
-
-    // Player header glow
-    this.dom.player1Btn.style.opacity = active === 1 ? "1" : "0.5";
-    this.dom.player1Btn.style.boxShadow =
-      active === 1 ? `0 0 15px ${CONFIG.COLOR_PLAYER1}` : "none";
-    this.dom.player2Btn.style.opacity = active === 2 ? "1" : "0.5";
-    this.dom.player2Btn.style.boxShadow =
-      active === 2 ? `0 0 15px ${CONFIG.COLOR_PLAYER2}` : "none";
-
-    // Enable/disable controls
-    this.enablePlayerControls(active);
-    this.disablePlayerControls(active === 1 ? 2 : 1);
-    this.enablePreview(active);
-    this.disablePreview(active === 1 ? 2 : 1);
-
-    this.updatePatternButtonStates();
-
-    // Update pause buttons in live phase
-    if (this.game.isSimulationRunning) {
-      this.updatePauseButtonLabels();
-
-      if (this.game.isPaused || this.game.isPauseDecision) {
-        this.dom.ready1Btn.disabled = true;
-        this.dom.ready1Btn.style.opacity = "0.3";
-        this.dom.ready2Btn.disabled = true;
-        this.dom.ready2Btn.style.opacity = "0.3";
-      } else {
-        const p1ok = active === 1 && this.game.pausesPlayer1 > 0;
-        const p2ok = active === 2 && this.game.pausesPlayer2 > 0;
-        this.dom.ready1Btn.disabled = !p1ok;
-        this.dom.ready1Btn.style.opacity = p1ok ? "1" : "0.3";
-        this.dom.ready2Btn.disabled = !p2ok;
-        this.dom.ready2Btn.style.opacity = p2ok ? "1" : "0.3";
-      }
     }
   }
 
@@ -440,63 +459,42 @@ export class UIController {
       this.updatePatternInfo(2, null);
     }
   }
-
-  private updatePauseButtonLabels(): void {
-    if (this.game.isSimulationRunning) {
-      this.dom.ready1Btn.textContent = `Pause ${this.game.pausesPlayer1}/${CONFIG.MAX_PAUSES_PER_PLAYER}`;
-      this.dom.ready2Btn.textContent = `Pause ${this.game.pausesPlayer2}/${CONFIG.MAX_PAUSES_PER_PLAYER}`;
-    }
-  }
   //#endregion
 
-  //#region Player Controls Enable/Disable
-  private enablePlayerControls(player: Player): void {
+  //#region Enable/Disable Controls
+  private enablePlayerPatterns(player: Player): void {
     const patterns =
       player === 1 ? this.dom.player1Patterns : this.dom.player2Patterns;
     for (const btn of patterns) {
       btn.disabled = false;
       btn.style.opacity = "1";
     }
-
-    const readyBtn = player === 1 ? this.dom.ready1Btn : this.dom.ready2Btn;
-    if (this.game.isSimulationRunning) {
-      const pausesLeft = this.game.getPauses(player);
-      readyBtn.disabled = pausesLeft <= 0;
-      readyBtn.style.opacity = pausesLeft > 0 ? "1" : "0.3";
-    } else {
-      const isReady =
-        player === 1 ? this.turns.player1Ready : this.turns.player2Ready;
-      if (!isReady) {
-        readyBtn.disabled = false;
-        readyBtn.style.opacity = "1";
-      }
-    }
-
-    const surrenderBtn =
-      player === 1 ? this.dom.surrender1Btn : this.dom.surrender2Btn;
-    surrenderBtn.disabled = false;
-    surrenderBtn.style.opacity = "1";
   }
 
-  private disablePlayerControls(player: Player): void {
+  private disablePlayerPatterns(player: Player): void {
     const patterns =
       player === 1 ? this.dom.player1Patterns : this.dom.player2Patterns;
     for (const btn of patterns) {
       btn.disabled = true;
       btn.style.opacity = "0.3";
     }
+  }
 
-    const playerBtn = player === 1 ? this.dom.player1Btn : this.dom.player2Btn;
-    playerBtn.disabled = true;
+  private disableAllControls(): void {
+    this.disablePlayerPatterns(1);
+    this.disablePlayerPatterns(2);
 
-    const readyBtn = player === 1 ? this.dom.ready1Btn : this.dom.ready2Btn;
-    readyBtn.disabled = true;
-    readyBtn.style.opacity = "0.3";
+    this.dom.ready1Btn.disabled = true;
+    this.dom.ready1Btn.style.opacity = "0.3";
+    this.dom.ready1Btn.textContent = "—";
+    this.dom.ready2Btn.disabled = true;
+    this.dom.ready2Btn.style.opacity = "0.3";
+    this.dom.ready2Btn.textContent = "—";
 
-    const surrenderBtn =
-      player === 1 ? this.dom.surrender1Btn : this.dom.surrender2Btn;
-    surrenderBtn.disabled = true;
-    surrenderBtn.style.opacity = "0.3";
+    this.dom.player1Btn.style.boxShadow = "none";
+    this.dom.player1Btn.style.opacity = "0.5";
+    this.dom.player2Btn.style.boxShadow = "none";
+    this.dom.player2Btn.style.opacity = "0.5";
   }
 
   private enablePreview(player: Player): void {
@@ -532,7 +530,8 @@ export class UIController {
 
   //#region Game End
   private showWinner(): void {
-    this.turns.stopTimer();
+    this.turns.stopClock();
+    this.stopAnimation();
     this.dom.turnTimerContainer.style.visibility = "hidden";
 
     const result = this.game.getWinner();
@@ -547,8 +546,8 @@ export class UIController {
       this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_PLAYER2;
     } else {
       this.dom.winnerTitle.textContent = "It's a Tie!";
-      this.dom.winnerTitle.style.color = CONFIG.COLOR_PAUSE;
-      this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_PAUSE;
+      this.dom.winnerTitle.style.color = CONFIG.COLOR_TACTICAL;
+      this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_TACTICAL;
     }
 
     this.dom.winnerScore.textContent = `Score: ${result.player1Score} - ${result.player2Score}`;
@@ -559,7 +558,7 @@ export class UIController {
   //#region Reset
   private resetGame(): void {
     this.turns.reset();
-    this.pauses.reset();
+    this.stopAnimation();
 
     this.dom.winnerOverlay.style.display = "none";
 
@@ -569,28 +568,20 @@ export class UIController {
     this.selectedPattern1 = null;
     this.selectedPattern2 = null;
 
-    this.enablePlayerControls(1);
-    this.updateActivePlayerUI();
-
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
-
-    // Reset ready buttons
-    this.dom.ready1Btn.disabled = false;
-    this.dom.ready1Btn.style.opacity = "1";
-    this.dom.ready1Btn.textContent = "Ready!";
-    this.dom.ready2Btn.disabled = false;
-    this.dom.ready2Btn.style.opacity = "1";
-    this.dom.ready2Btn.textContent = "Ready!";
 
     // Clear previews
     this.previewRenderer1.drawPreview(null, 1);
     this.previewRenderer2.drawPreview(null, 2);
     this.updatePatternInfo(1, null);
     this.updatePatternInfo(2, null);
-
     this.dom.previewToggle1.textContent = "▶";
     this.dom.previewToggle2.textContent = "▶";
+
+    // Show start overlay again
+    this.dom.startOverlay.style.display = "flex";
+    this.disableAllControls();
   }
   //#endregion
 }

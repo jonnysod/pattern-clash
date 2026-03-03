@@ -277,7 +277,7 @@ export class PreviewRenderer {
         this.computeNextGeneration();
       }
       this.drawGrid();
-    }, CONFIG.ANIMATION_INTERVAL_MS);
+    }, 80);
   }
 
   pause(): void {

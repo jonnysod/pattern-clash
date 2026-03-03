@@ -5,12 +5,11 @@ import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
 import { CONFIG } from "./config.js";
 
-// Valid phase transitions (source → allowed targets)
+// Valid phase transitions
 const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
-  placement: ["live", "ended"],
-  live: ["paused", "ended"],
-  paused: ["pauseDecision", "live", "ended"],
-  pauseDecision: ["paused", "live", "ended"],
+  placement: ["simulation", "ended"],
+  simulation: ["tactical", "ended"],
+  tactical: ["simulation", "ended"],
   ended: ["placement"], // restart
 };
 
@@ -21,7 +20,6 @@ export class Game {
 
   grid: boolean[][];
 
-  // State machine (replaces isRunning, isLivePhase, isPaused)
   private _phase: GamePhase = "placement";
 
   // Points system
@@ -34,11 +32,6 @@ export class Game {
 
   // Surrender tracking
   surrenderedPlayer: Player | null = null;
-
-  // Pause tracking
-  pausesPlayer1: number = CONFIG.MAX_PAUSES_PER_PLAYER;
-  pausesPlayer2: number = CONFIG.MAX_PAUSES_PER_PLAYER;
-  pausingPlayer: Player | null = null;
 
   constructor(rows: number, cols: number) {
     this.rows = rows;
@@ -63,27 +56,26 @@ export class Game {
     this._phase = newPhase;
   }
 
-  // Convenience getters for backwards compatibility / readability
   get isPlacement(): boolean {
     return this._phase === "placement";
   }
-  get isLive(): boolean {
-    return this._phase === "live";
+  get isSimulation(): boolean {
+    return this._phase === "simulation";
   }
-  get isPaused(): boolean {
-    return this._phase === "paused";
-  }
-  get isPauseDecision(): boolean {
-    return this._phase === "pauseDecision";
+  get isTactical(): boolean {
+    return this._phase === "tactical";
   }
   get isEnded(): boolean {
     return this._phase === "ended";
   }
-  get isSimulationRunning(): boolean {
+
+  // Check if tactical phase should trigger
+  shouldTriggerTactical(): boolean {
     return (
-      this._phase === "live" ||
-      this._phase === "paused" ||
-      this._phase === "pauseDecision"
+      this._phase === "simulation" &&
+      this.currentGeneration > 0 &&
+      this.currentGeneration % CONFIG.TACTICAL_INTERVAL === 0 &&
+      (this.canAffordAnyPattern(1) || this.canAffordAnyPattern(2))
     );
   }
   //#endregion
@@ -104,9 +96,6 @@ export class Game {
     this.pointsPlayer2 = CONFIG.INITIAL_BUDGET;
     this.currentGeneration = 0;
     this.surrenderedPlayer = null;
-    this.pausesPlayer1 = CONFIG.MAX_PAUSES_PER_PLAYER;
-    this.pausesPlayer2 = CONFIG.MAX_PAUSES_PER_PLAYER;
-    this.pausingPlayer = null;
   }
   //#endregion
 
@@ -202,16 +191,6 @@ export class Game {
 
     return true;
   }
-
-  toggleCell(row: number, col: number, player: Player): boolean {
-    if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
-      if (this.zones.isValidPlacement(col, player)) {
-        this.grid[row]![col] = !this.grid[row]![col];
-        return true;
-      }
-    }
-    return false;
-  }
   //#endregion
 
   //#region Budget Queries
@@ -223,18 +202,6 @@ export class Game {
     const points = player === 1 ? this.pointsPlayer1 : this.pointsPlayer2;
     return points >= this.getMinPatternCost();
   }
-
-  getPauses(player: Player): number {
-    return player === 1 ? this.pausesPlayer1 : this.pausesPlayer2;
-  }
-
-  deductPause(player: Player): void {
-    if (player === 1) {
-      this.pausesPlayer1--;
-    } else {
-      this.pausesPlayer2--;
-    }
-  }
   //#endregion
 
   //#region End Conditions
@@ -245,7 +212,7 @@ export class Game {
     } else {
       this.pointsPlayer2 = 0;
     }
-    this.setPhase("ended");
+    this._phase = "ended";
   }
 
   getWinner(): {

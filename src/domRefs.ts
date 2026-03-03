@@ -1,6 +1,5 @@
 // Central DOM element registry
 // All getElementById calls happen here, once, at startup.
-// Crashes immediately with a clear message if an element is missing.
 
 function getElement<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id) as T | null;
@@ -39,7 +38,7 @@ export function createDOMRefs() {
     turnTimerContainer: getElement<HTMLDivElement>("turnTimerContainer"),
     turnTimerBar: getElement<HTMLDivElement>("turnTimerBar"),
 
-    // Ready / Pause buttons
+    // Action buttons (Pass/Done in placement & tactical, disabled in simulation)
     ready1Btn: getElement<HTMLButtonElement>("ready1Btn"),
     ready2Btn: getElement<HTMLButtonElement>("ready2Btn"),
 
@@ -61,19 +60,16 @@ export function createDOMRefs() {
     patternName2: getElement<HTMLDivElement>("patternName2"),
     patternCost2: getElement<HTMLDivElement>("patternCost2"),
 
+    // Start overlay
+    startOverlay: getElement<HTMLDivElement>("startOverlay"),
+    startGameBtn: getElement<HTMLButtonElement>("startGameBtn"),
+
     // Winner overlay
     winnerOverlay: getElement<HTMLDivElement>("winnerOverlay"),
     winnerTitle: getElement<HTMLHeadingElement>("winnerTitle"),
     winnerScore: getElement<HTMLParagraphElement>("winnerScore"),
     showBoardBtn: getElement<HTMLButtonElement>("showBoardBtn"),
     restartBtn: getElement<HTMLButtonElement>("restartBtn"),
-
-    // Pause decision overlay
-    pauseDecisionOverlay: getElement<HTMLDivElement>("pauseDecisionOverlay"),
-    pauseDecisionTitle: getElement<HTMLHeadingElement>("pauseDecisionTitle"),
-    pauseDecisionTimerBar: getElement<HTMLDivElement>("pauseDecisionTimerBar"),
-    pauseDecisionYes: getElement<HTMLButtonElement>("pauseDecisionYes"),
-    pauseDecisionNo: getElement<HTMLButtonElement>("pauseDecisionNo"),
   };
 }
 

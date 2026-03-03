@@ -10,20 +10,22 @@ export const CONFIG = {
   INITIAL_BUDGET: 80,
   MAX_GENERATIONS: 800,
   SCORE_POINTS: 2,
-  ANIMATION_INTERVAL_MS: 80,
 
-  // Turns
-  TURN_DURATION_MS: 7000,
+  // Animation
+  FPS_FAST: 12,
+  FPS_SLOW: 2,
 
-  // Pauses
-  MAX_PAUSES_PER_PLAYER: 3,
-  PAUSE_DURATION_MS: 10000,
-  PAUSE_DECISION_DURATION_MS: 3000,
+  // Chess Clock
+  CHESS_CLOCK_PLACEMENT_SEC: 20, // Seconds per player, placement phase
+  CHESS_CLOCK_TACTICAL_SEC: 10, // Seconds per player, tactical phase
+
+  // Tactical Phases
+  TACTICAL_INTERVAL: 100, // Every N generations a tactical phase triggers
 
   // Colors
   COLOR_PLAYER1: "#44dddd",
   COLOR_PLAYER2: "#dd44dd",
-  COLOR_PAUSE: "#ffaa00",
+  COLOR_TACTICAL: "#ffaa00",
   COLOR_CELL: "#00ff00",
   COLOR_ZONE_PLAYER1: "#003333",
   COLOR_ZONE_PLAYER2: "#330033",

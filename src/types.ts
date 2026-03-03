@@ -9,19 +9,18 @@ export interface Pattern {
 
 export type Player = 1 | 2;
 
-// State machine phases - replaces scattered boolean flags
+// State machine phases
 export type GamePhase =
-  | "placement" // Players take turns placing patterns
-  | "live" // Simulation running, players can place during turns
-  | "paused" // A player has paused the simulation
-  | "pauseDecision" // Opponent deciding whether to counter-pause
+  | "placement" // Initial placement with chess clock
+  | "simulation" // Fast simulation, no player interaction
+  | "tactical" // Slow simulation with chess clock placement
   | "ended"; // Game over
 
 // Rectangle descriptor for data-driven zone rendering
 export interface ZoneRect {
-  x: number; // column start
-  y: number; // row start
-  w: number; // width in columns
-  h: number; // height in rows
+  x: number;
+  y: number;
+  w: number;
+  h: number;
   color: string;
 }
