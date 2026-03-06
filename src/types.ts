@@ -24,3 +24,11 @@ export interface ZoneRect {
   h: number;
   color: string;
 }
+
+// Score event emitted by game logic each generation
+export interface ScoreEvent {
+  row: number;
+  col: number;
+  scorer: Player;
+  points: number;
+}

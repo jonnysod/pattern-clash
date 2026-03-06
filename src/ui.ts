@@ -7,6 +7,7 @@ import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { TurnManager } from "./turnManager.js";
+import { ScoreEffects } from "./scoreEffects.js";
 import { CONFIG } from "./config.js";
 
 export class UIController {
@@ -18,6 +19,7 @@ export class UIController {
   private cellSize: number;
 
   private turns: TurnManager;
+  private scoreEffects: ScoreEffects;
 
   private selectedPattern1: Pattern | null = null;
   private selectedPattern2: Pattern | null = null;
@@ -39,6 +41,7 @@ export class UIController {
     this.cellSize = cellSize;
 
     this.turns = new TurnManager(game, dom);
+    this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
 
     // Wire callbacks
     this.turns.onTurnSwitch = () => this.updateActivePlayerUI();
@@ -54,7 +57,7 @@ export class UIController {
     this.disableAllControls();
     this.dom.startGameBtn.addEventListener("click", () => {
       this.dom.startOverlay.style.display = "none";
-      this.startPlacementPhase();
+    this.startPlacementPhase();
     });
   }
 
@@ -236,12 +239,10 @@ export class UIController {
   }
 
   private startSimulation(): void {
-    this.stopAnimation();
     this.animateSimulation();
   }
 
   private startTacticalPhase(): void {
-    this.stopAnimation();
     this.game.setPhase("tactical");
 
     this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
@@ -268,6 +269,11 @@ export class UIController {
     this.renderer.drawGrid();
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
+
+    // Show floating score effects
+    if (this.game.scoreEvents.length > 0) {
+      this.scoreEffects.feed(this.game.scoreEvents);
+    }
 
     if (this.game.isEnded) {
       this.showWinner();
@@ -305,6 +311,11 @@ export class UIController {
     this.renderer.drawGrid();
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
+
+    // Show floating score effects
+    if (this.game.scoreEvents.length > 0) {
+      this.scoreEffects.feed(this.game.scoreEvents);
+    }
 
     if (this.game.isEnded) {
       this.turns.stopClock();
@@ -408,8 +419,10 @@ export class UIController {
   }
 
   private updatePatternInfo(player: Player, pattern: Pattern | null): void {
-    const nameEl = player === 1 ? this.dom.patternName1 : this.dom.patternName2;
-    const costEl = player === 1 ? this.dom.patternCost1 : this.dom.patternCost2;
+    const nameEl =
+      player === 1 ? this.dom.patternName1 : this.dom.patternName2;
+    const costEl =
+      player === 1 ? this.dom.patternCost1 : this.dom.patternCost2;
 
     if (pattern) {
       nameEl.textContent = pattern.name;
@@ -564,6 +577,7 @@ export class UIController {
 
     this.game.reset();
     this.renderer.drawGrid();
+    this.scoreEffects.clear();
 
     this.selectedPattern1 = null;
     this.selectedPattern2 = null;

@@ -1,6 +1,6 @@
 // Game state and Conway's Game of Life logic
 
-import type { Pattern, Player, GamePhase } from "./types.js";
+import type { Pattern, Player, GamePhase, ScoreEvent } from "./types.js";
 import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
 import { CONFIG } from "./config.js";
@@ -32,6 +32,9 @@ export class Game {
 
   // Surrender tracking
   surrenderedPlayer: Player | null = null;
+
+  // Score events from last generation (consumed by UI each frame)
+  scoreEvents: ScoreEvent[] = [];
 
   constructor(rows: number, cols: number) {
     this.rows = rows;
@@ -96,12 +99,14 @@ export class Game {
     this.pointsPlayer2 = CONFIG.INITIAL_BUDGET;
     this.currentGeneration = 0;
     this.surrenderedPlayer = null;
+    this.scoreEvents = [];
   }
   //#endregion
 
   //#region Simulation
   computeNextGeneration(): void {
     this.currentGeneration++;
+    this.scoreEvents = [];
 
     if (this.currentGeneration >= this.maxGenerations) {
       this.setPhase("ended");
@@ -121,12 +126,18 @@ export class Game {
           newGrid[row]![col] = true;
 
           const scoreResult = this.zones.isScoreCell(row, col);
-          if (scoreResult.scores) {
+          if (scoreResult.scores && scoreResult.scorer) {
             if (scoreResult.scorer === 1) {
               this.pointsPlayer1 += CONFIG.SCORE_POINTS;
-            } else if (scoreResult.scorer === 2) {
+            } else {
               this.pointsPlayer2 += CONFIG.SCORE_POINTS;
             }
+            this.scoreEvents.push({
+              row,
+              col,
+              scorer: scoreResult.scorer,
+              points: CONFIG.SCORE_POINTS,
+            });
           }
         }
       }
