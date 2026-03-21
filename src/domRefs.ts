@@ -26,6 +26,10 @@ export function createDOMRefs() {
     player1Btn: getElement<HTMLButtonElement>("player1Btn"),
     player2Btn: getElement<HTMLButtonElement>("player2Btn"),
 
+    // Player side containers
+    player1Side: getElement<HTMLDivElement>("player1Side"),
+    player2Side: getElement<HTMLDivElement>("player2Side"),
+
     // Points displays
     points1: getElement<HTMLSpanElement>("points1"),
     points2: getElement<HTMLSpanElement>("points2"),
@@ -60,16 +64,31 @@ export function createDOMRefs() {
     patternName2: getElement<HTMLDivElement>("patternName2"),
     patternCost2: getElement<HTMLDivElement>("patternCost2"),
 
-    // Start overlay
-    startOverlay: getElement<HTMLDivElement>("startOverlay"),
-    startGameBtn: getElement<HTMLButtonElement>("startGameBtn"),
-
     // Winner overlay
     winnerOverlay: getElement<HTMLDivElement>("winnerOverlay"),
     winnerTitle: getElement<HTMLHeadingElement>("winnerTitle"),
     winnerScore: getElement<HTMLParagraphElement>("winnerScore"),
     showBoardBtn: getElement<HTMLButtonElement>("showBoardBtn"),
     restartBtn: getElement<HTMLButtonElement>("restartBtn"),
+
+    // Start / Lobby overlay
+    startOverlay: getElement<HTMLDivElement>("startOverlay"),
+    lobbyModeSelect: getElement<HTMLDivElement>("lobbyModeSelect"),
+    localGameBtn: getElement<HTMLButtonElement>("localGameBtn"),
+    onlineGameBtn: getElement<HTMLButtonElement>("onlineGameBtn"),
+    lobbyOnlineChoice: getElement<HTMLDivElement>("lobbyOnlineChoice"),
+    createGameBtn: getElement<HTMLButtonElement>("createGameBtn"),
+    joinGameBtn: getElement<HTMLButtonElement>("joinGameBtn"),
+    lobbyWaiting: getElement<HTMLDivElement>("lobbyWaiting"),
+    gameCodeDisplay: getElement<HTMLDivElement>("gameCodeDisplay"),
+    lobbyStatus: getElement<HTMLParagraphElement>("lobbyStatus"),
+    lobbyJoin: getElement<HTMLDivElement>("lobbyJoin"),
+    joinCodeInput: getElement<HTMLInputElement>("joinCodeInput"),
+    joinError: getElement<HTMLParagraphElement>("joinError"),
+    joinConfirmBtn: getElement<HTMLButtonElement>("joinConfirmBtn"),
+    lobbyBackBtn1: getElement<HTMLButtonElement>("lobbyBackBtn1"),
+    lobbyBackBtn2: getElement<HTMLButtonElement>("lobbyBackBtn2"),
+    lobbyBackBtn3: getElement<HTMLButtonElement>("lobbyBackBtn3"),
   };
 }
 

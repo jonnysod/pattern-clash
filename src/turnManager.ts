@@ -65,6 +65,11 @@ export class TurnManager {
     this.updateButtonText();
   }
 
+  // Expose whether current activation has placed something
+  hasPlaced(): boolean {
+    return this.hasPlacedThisActivation;
+  }
+
   // Called when the active player presses the action button
   onActionButton(): void {
     if (!this.clock?.isRunning()) return;
@@ -89,10 +94,7 @@ export class TurnManager {
     const opponent: Player = this.activePlayer === 1 ? 2 : 1;
 
     // If opponent is done or can't afford, stay with current player
-    if (
-      this.isPlayerDone(opponent) ||
-      !this.game.canAffordAnyPattern(opponent)
-    ) {
+    if (this.isPlayerDone(opponent) || !this.game.canAffordAnyPattern(opponent)) {
       // Current player keeps going, just reset activation state
       this.hasPlacedThisActivation = false;
       this.updateButtonText();
@@ -121,10 +123,7 @@ export class TurnManager {
 
     // Switch to the other player if they're still active
     const opponent: Player = player === 1 ? 2 : 1;
-    if (
-      !this.isPlayerDone(opponent) &&
-      this.game.canAffordAnyPattern(opponent)
-    ) {
+    if (!this.isPlayerDone(opponent) && this.game.canAffordAnyPattern(opponent)) {
       this.activePlayer = opponent;
       this.hasPlacedThisActivation = false;
       this.clock?.switchTo(opponent);
@@ -144,11 +143,7 @@ export class TurnManager {
   //#endregion
 
   //#region UI Updates
-  private updateTimerBar(
-    player: Player,
-    remaining: number,
-    total: number,
-  ): void {
+  private updateTimerBar(player: Player, remaining: number, total: number): void {
     const pct = (remaining / total) * 100;
     this.dom.turnTimerBar.style.width = `${pct}%`;
     this.dom.turnTimerBar.style.backgroundColor =

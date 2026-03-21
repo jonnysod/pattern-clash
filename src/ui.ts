@@ -8,6 +8,7 @@ import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { TurnManager } from "./turnManager.js";
 import { ScoreEffects } from "./scoreEffects.js";
+import { Network, type GameAction } from "./network.js";
 import { CONFIG } from "./config.js";
 
 export class UIController {
@@ -20,10 +21,14 @@ export class UIController {
 
   private turns: TurnManager;
   private scoreEffects: ScoreEffects;
+  private network: Network | null;
 
   private selectedPattern1: Pattern | null = null;
   private selectedPattern2: Pattern | null = null;
   private animationId: number | null = null;
+
+  // Which player is this client? In local mode, null (both).
+  private localPlayer: Player | null = null;
 
   constructor(
     game: Game,
@@ -32,6 +37,7 @@ export class UIController {
     previewRenderer1: PreviewRenderer,
     previewRenderer2: PreviewRenderer,
     cellSize: number,
+    network: Network | null = null,
   ) {
     this.game = game;
     this.dom = dom;
@@ -39,6 +45,8 @@ export class UIController {
     this.previewRenderer1 = previewRenderer1;
     this.previewRenderer2 = previewRenderer2;
     this.cellSize = cellSize;
+    this.network = network;
+    this.localPlayer = network?.localPlayer ?? null;
 
     this.turns = new TurnManager(game, dom);
     this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
@@ -47,18 +55,55 @@ export class UIController {
     this.turns.onTurnSwitch = () => this.updateActivePlayerUI();
     this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
 
+    // Wire network callbacks
+    if (this.network) {
+      this.network.onRemoteAction = (action) => this.handleRemoteAction(action);
+    }
+
     this.setupEventListeners();
 
     // Initialize displays
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
 
-    // Wait for start button
+    // Online mode: dim opponent side and add "You" badge
+    if (this.localPlayer) {
+      this.setupOnlinePlayerIndicator();
+    }
+
+    // Start game immediately (lobby handles the waiting)
     this.disableAllControls();
-    this.dom.startGameBtn.addEventListener("click", () => {
-      this.dom.startOverlay.style.display = "none";
     this.startPlacementPhase();
-    });
+  }
+
+  private setupOnlinePlayerIndicator(): void {
+    const localSide =
+      this.localPlayer === 1 ? this.dom.player1Side : this.dom.player2Side;
+    const remoteSide =
+      this.localPlayer === 1 ? this.dom.player2Side : this.dom.player1Side;
+    const localBtn =
+      this.localPlayer === 1 ? this.dom.player1Btn : this.dom.player2Btn;
+
+    // Dim opponent side
+    remoteSide.style.opacity = "0.4";
+    remoteSide.style.pointerEvents = "none";
+
+    // Add "You" badge above local player button
+    const badge = document.createElement("div");
+    badge.textContent = "← You";
+    if (this.localPlayer === 2) {
+      badge.textContent = "You →";
+    }
+    const color =
+      this.localPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+    badge.style.cssText = `
+      color: ${color};
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: -10px;
+    `;
+    localSide.insertBefore(badge, localBtn);
   }
 
   //#region Event Setup
@@ -75,13 +120,13 @@ export class UIController {
   private setupCanvasClick(): void {
     this.dom.gameCanvas.addEventListener("click", (e) => {
       const phase = this.game.phase;
-
-      // Only allow placement in placement or tactical phase
       if (phase !== "placement" && phase !== "tactical") return;
 
       const player = this.turns.activePlayer;
 
-      // Only active player can place
+      // Online: only local player can click
+      if (!this.isLocalPlayer(player)) return;
+
       if (this.turns.isPlayerDone(player)) return;
 
       const rect = this.dom.gameCanvas.getBoundingClientRect();
@@ -92,40 +137,64 @@ export class UIController {
         player === 1 ? this.selectedPattern1 : this.selectedPattern2;
       if (!pattern) return;
 
-      const playerPattern = getPatternForPlayer(pattern, player);
+      const patternIndex = PATTERNS.indexOf(pattern);
+      this.executePlace(player, patternIndex, row, col);
 
-      // Validate using mouse position (symmetric for both players)
-      if (!this.game.zones.isValidPlacement(col, player)) {
-        this.renderer.flashInvalidPlacement(col, row);
-        this.renderer.drawGrid();
-        return;
+      // Send to remote
+      if (this.network) {
+        this.network.sendAction({
+          type: "placePattern",
+          player,
+          patternIndex,
+          row,
+          col,
+        });
       }
-
-      // P2: offset so pattern is placed left of cursor
-      let placementCol = col;
-      if (player === 2) {
-        const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-        placementCol = col - maxC;
-      }
-
-      const success = this.game.placePattern(
-        row,
-        placementCol,
-        playerPattern,
-        player,
-        true,
-      );
-
-      if (success) {
-        this.updatePointsDisplay();
-        this.turns.notifyPlacement();
-        this.updatePatternButtonStates();
-      } else {
-        this.renderer.flashInvalidPlacement(col, row);
-      }
-
-      this.renderer.drawGrid();
     });
+  }
+
+  // Check if a player is controlled by this client
+  private isLocalPlayer(player: Player): boolean {
+    if (this.localPlayer === null) return true; // local mode: both
+    return player === this.localPlayer;
+  }
+
+  // Execute a pattern placement (used by both local clicks and remote actions)
+  private executePlace(
+    player: Player,
+    patternIndex: number,
+    row: number,
+    col: number,
+  ): void {
+    const pattern = PATTERNS[patternIndex];
+    if (!pattern) return;
+
+    const playerPattern = getPatternForPlayer(pattern, player);
+
+    // P2: offset so pattern is placed left of cursor
+    let placementCol = col;
+    if (player === 2) {
+      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
+      placementCol = col - maxC;
+    }
+
+    const success = this.game.placePattern(
+      row,
+      placementCol,
+      playerPattern,
+      player,
+      true,
+    );
+
+    if (success) {
+      this.updatePointsDisplay();
+      this.turns.notifyPlacement();
+      this.updatePatternButtonStates();
+    } else {
+      this.renderer.flashInvalidPlacement(col, row);
+    }
+
+    this.renderer.drawGrid();
   }
 
   private setupCanvasHover(): void {
@@ -147,56 +216,106 @@ export class UIController {
 
   private setupSurrenderButtons(): void {
     this.dom.surrender1Btn.addEventListener("click", () => {
+      if (!this.isLocalPlayer(1)) return;
       if (confirm("Surrender? Your opponent wins!")) {
-        this.game.surrender(1);
-        this.turns.stopClock();
-        this.stopAnimation();
-        this.showWinner();
+        this.executeSurrender(1);
+        if (this.network) {
+          this.network.sendAction({ type: "surrender", player: 1 });
+        }
       }
     });
 
     this.dom.surrender2Btn.addEventListener("click", () => {
+      if (!this.isLocalPlayer(2)) return;
       if (confirm("Surrender? Your opponent wins!")) {
-        this.game.surrender(2);
-        this.turns.stopClock();
-        this.stopAnimation();
-        this.showWinner();
+        this.executeSurrender(2);
+        if (this.network) {
+          this.network.sendAction({ type: "surrender", player: 2 });
+        }
       }
     });
+  }
+
+  private executeSurrender(player: Player): void {
+    this.game.surrender(player);
+    this.turns.stopClock();
+    this.stopAnimation();
+    this.showWinner();
   }
 
   private setupPatternButtons(): void {
     for (const btn of this.dom.player1Patterns) {
       btn.addEventListener("click", () => {
+        if (!this.isLocalPlayer(1)) return;
         const idx = parseInt(btn.getAttribute("data-pattern")!);
-        this.selectedPattern1 = PATTERNS[idx]!;
-        this.previewRenderer1.drawPreview(this.selectedPattern1, 1);
-        this.updatePatternInfo(1, this.selectedPattern1);
-        this.dom.previewToggle1.textContent = "▶";
+        this.executeSelectPattern(1, idx);
+        if (this.network) {
+          this.network.sendAction({
+            type: "selectPattern",
+            player: 1,
+            patternIndex: idx,
+          });
+        }
       });
     }
 
     for (const btn of this.dom.player2Patterns) {
       btn.addEventListener("click", () => {
+        if (!this.isLocalPlayer(2)) return;
         const idx = parseInt(btn.getAttribute("data-pattern")!);
-        this.selectedPattern2 = PATTERNS[idx]!;
-        this.previewRenderer2.drawPreview(this.selectedPattern2, 2);
-        this.updatePatternInfo(2, this.selectedPattern2);
-        this.dom.previewToggle2.textContent = "▶";
+        this.executeSelectPattern(2, idx);
+        if (this.network) {
+          this.network.sendAction({
+            type: "selectPattern",
+            player: 2,
+            patternIndex: idx,
+          });
+        }
       });
+    }
+  }
+
+  private executeSelectPattern(player: Player, patternIndex: number): void {
+    const pattern = PATTERNS[patternIndex]!;
+    if (player === 1) {
+      this.selectedPattern1 = pattern;
+      this.previewRenderer1.drawPreview(pattern, 1);
+      this.updatePatternInfo(1, pattern);
+      this.dom.previewToggle1.textContent = "▶";
+    } else {
+      this.selectedPattern2 = pattern;
+      this.previewRenderer2.drawPreview(pattern, 2);
+      this.updatePatternInfo(2, pattern);
+      this.dom.previewToggle2.textContent = "▶";
     }
   }
 
   private setupActionButtons(): void {
     this.dom.ready1Btn.addEventListener("click", () => {
+      if (!this.isLocalPlayer(1)) return;
       if (this.turns.activePlayer === 1) {
+        const actionType = this.turns.hasPlaced() ? "pass" : "done";
         this.turns.onActionButton();
+        if (this.network) {
+          this.network.sendAction({
+            type: actionType,
+            player: 1,
+          } as GameAction);
+        }
       }
     });
 
     this.dom.ready2Btn.addEventListener("click", () => {
+      if (!this.isLocalPlayer(2)) return;
       if (this.turns.activePlayer === 2) {
+        const actionType = this.turns.hasPlaced() ? "pass" : "done";
         this.turns.onActionButton();
+        if (this.network) {
+          this.network.sendAction({
+            type: actionType,
+            player: 2,
+          } as GameAction);
+        }
       }
     });
   }
@@ -222,7 +341,6 @@ export class UIController {
       this.dom.previewToggle2.textContent = playing ? "⏸" : "▶";
     });
   }
-  //#endregion
 
   //#region Phase Management
   private startPlacementPhase(): void {
@@ -239,10 +357,12 @@ export class UIController {
   }
 
   private startSimulation(): void {
+    this.stopAnimation();
     this.animateSimulation();
   }
 
   private startTacticalPhase(): void {
+    this.stopAnimation();
     this.game.setPhase("tactical");
 
     this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
@@ -251,6 +371,7 @@ export class UIController {
   }
 
   private onTacticalPhaseEnd(): void {
+    this.stopAnimation();
     this.game.setPhase("simulation");
     this.disableAllControls();
     this.dom.turnTimerContainer.style.visibility = "hidden";
@@ -303,6 +424,7 @@ export class UIController {
 
     // If phase switched back to simulation, hand off to fast animation
     if (this.game.isSimulation) {
+      this.stopAnimation();
       this.startSimulation();
       return;
     }
@@ -419,10 +541,8 @@ export class UIController {
   }
 
   private updatePatternInfo(player: Player, pattern: Pattern | null): void {
-    const nameEl =
-      player === 1 ? this.dom.patternName1 : this.dom.patternName2;
-    const costEl =
-      player === 1 ? this.dom.patternCost1 : this.dom.patternCost2;
+    const nameEl = player === 1 ? this.dom.patternName1 : this.dom.patternName2;
+    const costEl = player === 1 ? this.dom.patternCost1 : this.dom.patternCost2;
 
     if (pattern) {
       nameEl.textContent = pattern.name;
@@ -568,12 +688,50 @@ export class UIController {
   }
   //#endregion
 
+  //#region Network
+  private handleRemoteAction(action: GameAction): void {
+    console.log("[Remote]", action);
+
+    switch (action.type) {
+      case "placePattern":
+        this.executePlace(
+          action.player,
+          action.patternIndex,
+          action.row,
+          action.col,
+        );
+        break;
+
+      case "selectPattern":
+        this.executeSelectPattern(action.player, action.patternIndex);
+        break;
+
+      case "pass":
+      case "done":
+        this.turns.onActionButton();
+        break;
+
+      case "surrender":
+        this.executeSurrender(action.player);
+        break;
+    }
+  }
+  //#endregion
+
   //#region Reset
   private resetGame(): void {
     this.turns.reset();
     this.stopAnimation();
 
     this.dom.winnerOverlay.style.display = "none";
+
+    // In online mode: go back to lobby
+    if (this.network) {
+      this.network.disconnect();
+      // Show lobby by reloading (simplest approach)
+      window.location.reload();
+      return;
+    }
 
     this.game.reset();
     this.renderer.drawGrid();
@@ -593,9 +751,8 @@ export class UIController {
     this.dom.previewToggle1.textContent = "▶";
     this.dom.previewToggle2.textContent = "▶";
 
-    // Show start overlay again
-    this.dom.startOverlay.style.display = "flex";
-    this.disableAllControls();
+    // Restart placement phase
+    this.startPlacementPhase();
   }
   //#endregion
 }

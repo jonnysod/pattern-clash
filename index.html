@@ -54,6 +54,7 @@
     >
       <!-- Spieler 1 (links) -->
       <div
+        id="player1Side"
         style="
           display: flex;
           flex-direction: column;
@@ -246,6 +247,7 @@
 
       <!-- Spieler 2 (rechts) -->
       <div
+        id="player2Side"
         style="
           display: flex;
           flex-direction: column;
@@ -402,7 +404,7 @@
       </div>
     </div>
 
-<!-- Start overlay -->
+    <!-- Start / Lobby overlay -->
     <div
       id="startOverlay"
       style="
@@ -424,6 +426,7 @@
           padding: 40px 60px;
           border-radius: 10px;
           text-align: center;
+          min-width: 350px;
         "
       >
         <h1 style="font-size: 48px; margin-bottom: 10px; color: #00ff00">
@@ -432,21 +435,211 @@
         <p style="font-size: 18px; color: #aaaaaa; margin-bottom: 30px">
           Competitive Game of Life
         </p>
-        <button
-          id="startGameBtn"
-          style="
-            padding: 15px 50px;
-            font-size: 24px;
-            background-color: #00ff00;
-            color: #1a1a1a;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-          "
-        >
-          Start Game
-        </button>
+
+        <!-- Mode selection (initial view) -->
+        <div id="lobbyModeSelect">
+          <button
+            id="localGameBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #00ff00;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Local Game
+          </button>
+          <br />
+          <button
+            id="onlineGameBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #44dddd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Online Game
+          </button>
+        </div>
+
+        <!-- Online: Create or Join -->
+        <div id="lobbyOnlineChoice" style="display: none">
+          <button
+            id="createGameBtn"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #44dddd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Create Game
+          </button>
+          <br />
+          <button
+            id="joinGameBtn"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #dd44dd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Join Game
+          </button>
+          <br />
+          <button
+            id="lobbyBackBtn1"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: #666;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              margin-top: 15px;
+            "
+          >
+            ← Back
+          </button>
+        </div>
+
+        <!-- Waiting for opponent after creating -->
+        <div id="lobbyWaiting" style="display: none">
+          <p style="font-size: 16px; color: #aaaaaa; margin-bottom: 10px">
+            Share this code with your opponent:
+          </p>
+          <div
+            id="gameCodeDisplay"
+            style="
+              font-size: 42px;
+              font-weight: bold;
+              color: #44dddd;
+              letter-spacing: 8px;
+              margin: 15px 0;
+              font-family: monospace;
+            "
+          >
+            ------
+          </div>
+          <p
+            id="lobbyStatus"
+            style="font-size: 14px; color: #888; margin-bottom: 15px"
+          >
+            Waiting for opponent...
+          </p>
+          <button
+            id="lobbyBackBtn2"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: #666;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            ← Cancel
+          </button>
+        </div>
+
+        <!-- Join game input -->
+        <div id="lobbyJoin" style="display: none">
+          <p style="font-size: 16px; color: #aaaaaa; margin-bottom: 10px">
+            Enter game code:
+          </p>
+          <input
+            id="joinCodeInput"
+            type="text"
+            maxlength="6"
+            placeholder="ABC123"
+            style="
+              font-size: 32px;
+              font-weight: bold;
+              text-align: center;
+              letter-spacing: 6px;
+              width: 220px;
+              padding: 10px;
+              border: 2px solid #666;
+              border-radius: 5px;
+              background-color: #1a1a1a;
+              color: #dd44dd;
+              font-family: monospace;
+              text-transform: uppercase;
+            "
+          />
+          <br />
+          <p
+            id="joinError"
+            style="
+              font-size: 14px;
+              color: #ff4444;
+              margin: 10px 0;
+              display: none;
+            "
+          >
+            Error
+          </p>
+          <button
+            id="joinConfirmBtn"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #dd44dd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+            "
+          >
+            Join
+          </button>
+          <br />
+          <button
+            id="lobbyBackBtn3"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: #666;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              margin-top: 15px;
+            "
+          >
+            ← Back
+          </button>
+        </div>
       </div>
     </div>
 
@@ -518,6 +711,14 @@
       </div>
     </div>
 
+    <script type="importmap">
+      {
+        "imports": {
+          "firebase/app": "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js",
+          "firebase/firestore": "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"
+        }
+      }
+    </script>
     <script type="module" src="./dist/main.js"></script>
   </body>
 </html>
