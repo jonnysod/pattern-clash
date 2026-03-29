@@ -15,11 +15,14 @@ import type { Player } from "./types.js";
 // Action types sent between clients
 export type GameAction =
   | { type: "placePattern"; player: Player; patternIndex: number; row: number; col: number }
+  | { type: "tacticalPlace"; player: Player; patternIndex: number; row: number; col: number; generation: number }
   | { type: "selectPattern"; player: Player; patternIndex: number }
   | { type: "pass"; player: Player }
   | { type: "done"; player: Player }
   | { type: "surrender"; player: Player }
-  | { type: "startGame" };
+  | { type: "startGame" }
+  | { type: "syncCheck"; player: Player; generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number }
+  | { type: "syncFix"; grid: boolean[][]; pointsPlayer1: number; pointsPlayer2: number; generation: number };
 
 export interface GameResult {
   winner: Player | null;
@@ -63,6 +66,9 @@ export class Network {
   // Callback when opponent disconnects
   onOpponentLeft: (() => void) | null = null;
 
+  // Callback when remote player signals phase ready (placement/tactical → simulation)
+  onRemotePhaseReady: ((counter: number) => void) | null = null;
+
   constructor() {
     this.sessionId = generateSessionId();
   }
@@ -80,6 +86,8 @@ export class Network {
       state: "waiting",
       currentAction: null,
       actionCounter: 0,
+      player1PhaseReady: 0,
+      player2PhaseReady: 0,
       createdAt: serverTimestamp(),
     });
 
@@ -135,6 +143,21 @@ export class Network {
     });
   }
 
+  // Signal that this player is ready to start simulation after placement/tactical phase
+  async sendPhaseReady(): Promise<void> {
+    if (!this.gameId || !this.localPlayer) return;
+
+    const gameRef = doc(db, "games", this.gameId);
+    const field = this.localPlayer === 1 ? "player1PhaseReady" : "player2PhaseReady";
+
+    const snapshot = await getDoc(gameRef);
+    const current = snapshot.data()?.[field] ?? 0;
+
+    await updateDoc(gameRef, {
+      [field]: current + 1,
+    });
+  }
+
   // Save final game result
   async saveResult(result: GameResult): Promise<void> {
     if (!this.gameId) return;
@@ -162,6 +185,7 @@ export class Network {
     const gameRef = doc(db, "games", this.gameId);
     let lastActionCounter = -1;
     let opponentJoinedFired = false;
+    let lastRemotePhaseReady = 0;
 
     this.unsubscribe = onSnapshot(gameRef, (snapshot) => {
       const data = snapshot.data();
@@ -183,10 +207,25 @@ export class Network {
           this.onRemoteAction?.(action);
         }
 
+        // syncFix has no player field — P2 always handles it (P1 is authoritative)
+        if (action.type === "syncFix" && this.localPlayer === 2) {
+          this.onRemoteAction?.(action);
+        }
+
         // startGame has no player field - both sides handle it
         if (action.type === "startGame" && this.localPlayer === 2) {
           this.onRemoteAction?.(action);
         }
+      }
+
+      // Check remote player's phase ready counter
+      const remotePhaseReady = this.localPlayer === 1
+        ? (data.player2PhaseReady ?? 0)
+        : (data.player1PhaseReady ?? 0);
+
+      if (remotePhaseReady > lastRemotePhaseReady) {
+        lastRemotePhaseReady = remotePhaseReady;
+        this.onRemotePhaseReady?.(remotePhaseReady);
       }
     });
   }

@@ -89,6 +89,19 @@ export class Game {
       .fill(null)
       .map(() => Array(this.cols).fill(false));
   }
+
+  // Fast grid hash for sync debugging
+  gridHash(): number {
+    let hash = 0;
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        if (this.grid[row]![col]) {
+          hash = (hash * 31 + row * this.cols + col) | 0;
+        }
+      }
+    }
+    return hash;
+  }
   //#endregion
 
   //#region Reset
