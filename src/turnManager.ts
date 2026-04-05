@@ -87,6 +87,24 @@ export class TurnManager {
   isPlayerDone(player: Player): boolean {
     return player === 1 ? this.player1Done : this.player2Done;
   }
+
+  // Mark a player as done and switch to opponent, but never trigger onPhaseEnd.
+  // Used by online tactical phase where phase end is managed by UIController.
+  markPlayerDone(player: Player): void {
+    if (player === 1) {
+      this.player1Done = true;
+    } else {
+      this.player2Done = true;
+    }
+
+    const opponent: Player = player === 1 ? 2 : 1;
+    if (!this.isPlayerDone(opponent) && this.game.canAffordAnyPattern(opponent)) {
+      this.activePlayer = opponent;
+      this.hasPlacedThisActivation = false;
+      this.clock?.switchTo(opponent);
+      this.onTurnSwitch?.();
+    }
+  }
   //#endregion
 
   //#region Turn Switching
@@ -108,28 +126,9 @@ export class TurnManager {
   }
 
   private markDone(player: Player): void {
-    if (player === 1) {
-      this.player1Done = true;
-    } else {
-      this.player2Done = true;
-    }
+    this.markPlayerDone(player);
 
-    // Check if phase should end
     if (this.shouldEndPhase()) {
-      this.stopClock();
-      this.onPhaseEnd?.();
-      return;
-    }
-
-    // Switch to the other player if they're still active
-    const opponent: Player = player === 1 ? 2 : 1;
-    if (!this.isPlayerDone(opponent) && this.game.canAffordAnyPattern(opponent)) {
-      this.activePlayer = opponent;
-      this.hasPlacedThisActivation = false;
-      this.clock?.switchTo(opponent);
-      this.onTurnSwitch?.();
-    } else {
-      // Both done
       this.stopClock();
       this.onPhaseEnd?.();
     }

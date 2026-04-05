@@ -149,6 +149,23 @@ export class RollbackManager {
     return hash;
   }
 
+  // Build sync hash string for phase-ready handshake
+  buildSyncHash(game: Game): string {
+    return `${game.currentGeneration}|${game.gridHash()}|${game.pointsPlayer1}|${game.pointsPlayer2}|${this.actionQueueHash()}`;
+  }
+
+  // Parse a sync hash string
+  static parseSyncHash(hash: string): { generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number } {
+    const parts = hash.split("|");
+    return {
+      generation: parseInt(parts[0]!),
+      gridHash: parseInt(parts[1]!),
+      pointsPlayer1: parseInt(parts[2]!),
+      pointsPlayer2: parseInt(parts[3]!),
+      actionHash: parseInt(parts[4]!),
+    };
+  }
+
   // Format a sync status log for the current state
   formatSyncLog(phase: string, localPlayer: Player): string {
     const lines: string[] = [];
@@ -166,6 +183,24 @@ export class RollbackManager {
       lines.push(`  actions: ${summary}`);
     }
     return lines.join("\n");
+  }
+
+  // Serialize grid as flat string for Firestore (no nested arrays)
+  static serializeGrid(grid: boolean[][]): string {
+    return grid.map((row) => row.map((c) => (c ? "1" : "0")).join("")).join("");
+  }
+
+  // Deserialize grid from flat string
+  static deserializeGrid(data: string, rows: number, cols: number): boolean[][] {
+    const grid: boolean[][] = [];
+    for (let r = 0; r < rows; r++) {
+      const row: boolean[] = [];
+      for (let c = 0; c < cols; c++) {
+        row.push(data[r * cols + c] === "1");
+      }
+      grid.push(row);
+    }
+    return grid;
   }
 
   // Clean up when tactical phase ends

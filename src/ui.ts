@@ -35,16 +35,18 @@ export class UIController {
   private rollback: RollbackManager | null = null;
   //#endregion
 
-  //#region Phase-Ready Handshake State (online: wait for both before simulation)
+  //#region Tactical Done State (online: track both players independently)
+  private localTacticalDone: boolean = false;
+  private remoteTacticalDone: boolean = false;
+  //#endregion
+
+  //#region Phase-Ready Handshake State
   private localPhaseReadyCount: number = 0;
   private remotePhaseReadyCount: number = 0;
   private awaitingRemotePhaseReady: boolean = false;
-  //#endregion
-
-  //#region Sync Check State (online: verify grids match at phase boundaries)
-  private awaitingSyncCheck: boolean = false;
-  private localSyncData: { generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number } | null = null;
-  private remoteSyncData: { generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number } | null = null;
+  private phaseReadyTarget: "simulation" | "tactical" | null = null;
+  // Sync hash received from remote (null = no sync data or not yet received)
+  private remoteSyncHash: string | null = null;
   //#endregion
 
   //#region Waiting Overlay
@@ -79,7 +81,9 @@ export class UIController {
     // Wire network callbacks
     if (this.network) {
       this.network.onRemoteAction = (action) => this.handleRemoteAction(action);
-      this.network.onRemotePhaseReady = (counter) => this.handleRemotePhaseReady(counter);
+      this.network.onRemotePhaseReady = (counter) =>
+        this.handleRemotePhaseReady(counter);
+      this.network.onRemoteSyncHash = (hash) => this.handleRemoteSyncHash(hash);
       this.createWaitingOverlay();
     }
 
@@ -99,7 +103,7 @@ export class UIController {
     this.startPlacementPhase();
   }
 
-  //#region Waiting Overlay (shown during sync checks)
+  //#region Waiting Overlay
   private createWaitingOverlay(): void {
     this.waitingOverlay = document.createElement("div");
     this.waitingOverlay.style.cssText = `
@@ -130,15 +134,11 @@ export class UIController {
   }
 
   private showWaitingOverlay(): void {
-    if (this.waitingOverlay) {
-      this.waitingOverlay.style.display = "flex";
-    }
+    if (this.waitingOverlay) this.waitingOverlay.style.display = "flex";
   }
 
   private hideWaitingOverlay(): void {
-    if (this.waitingOverlay) {
-      this.waitingOverlay.style.display = "none";
-    }
+    if (this.waitingOverlay) this.waitingOverlay.style.display = "none";
   }
   //#endregion
 
@@ -150,16 +150,11 @@ export class UIController {
     const localBtn =
       this.localPlayer === 1 ? this.dom.player1Btn : this.dom.player2Btn;
 
-    // Dim opponent side
     remoteSide.style.opacity = "0.4";
     remoteSide.style.pointerEvents = "none";
 
-    // Add "You" badge above local player button
     const badge = document.createElement("div");
-    badge.textContent = "← You";
-    if (this.localPlayer === 2) {
-      badge.textContent = "You →";
-    }
+    badge.textContent = this.localPlayer === 1 ? "← You" : "You →";
     const color =
       this.localPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
     badge.style.cssText = `
@@ -189,10 +184,7 @@ export class UIController {
       if (phase !== "placement" && phase !== "tactical") return;
 
       const player = this.turns.activePlayer;
-
-      // Online: only local player can click
       if (!this.isLocalPlayer(player)) return;
-
       if (this.turns.isPlayerDone(player)) return;
 
       const rect = this.dom.gameCanvas.getBoundingClientRect();
@@ -205,14 +197,18 @@ export class UIController {
 
       const patternIndex = PATTERNS.indexOf(pattern);
 
-      // Online tactical phase: use rollback-aware placement
+      // Online tactical phase: rollback-aware placement
       if (this.network && phase === "tactical") {
         const gen = this.game.currentGeneration;
         const success = this.executePlace(player, patternIndex, row, col);
         if (success && this.rollback) {
-          // Record in rollback queue
-          this.rollback.addAction({ player, patternIndex, row, col, generation: gen });
-          // Send to remote with generation tag
+          this.rollback.addAction({
+            player,
+            patternIndex,
+            row,
+            col,
+            generation: gen,
+          });
           this.network.sendAction({
             type: "tacticalPlace",
             player,
@@ -225,7 +221,7 @@ export class UIController {
         return;
       }
 
-      // Placement phase or local mode: execute and send immediately
+      // Placement phase or local mode
       this.executePlace(player, patternIndex, row, col);
 
       if (this.network) {
@@ -240,14 +236,11 @@ export class UIController {
     });
   }
 
-  // Check if a player is controlled by this client
   private isLocalPlayer(player: Player): boolean {
-    if (this.localPlayer === null) return true; // local mode: both
+    if (this.localPlayer === null) return true;
     return player === this.localPlayer;
   }
 
-  // Execute a pattern placement (used by both local clicks and remote actions)
-  // Returns true if placement was successful.
   private executePlace(
     player: Player,
     patternIndex: number,
@@ -259,18 +252,18 @@ export class UIController {
 
     const playerPattern = getPatternForPlayer(pattern, player);
 
-    // P2: offset so pattern is placed left of cursor
     let placementCol = col;
     if (player === 2) {
       const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
       placementCol = col - maxC;
     }
 
-    // Debug: log placement with hash
     if (this.network) {
       const source = this.isLocalPlayer(player) ? "LOCAL" : "REMOTE";
       const hashBefore = this.game.gridHash();
-      console.log(`[Sync] ${source} place P${player} pattern=${patternIndex} row=${row} col=${placementCol} gen=${this.game.currentGeneration} hashBefore=${hashBefore}`);
+      console.log(
+        `[Sync] ${source} place P${player} pattern=${patternIndex} row=${row} col=${placementCol} gen=${this.game.currentGeneration} hashBefore=${hashBefore}`,
+      );
     }
 
     const success = this.game.placePattern(
@@ -391,6 +384,13 @@ export class UIController {
       if (!this.isLocalPlayer(1)) return;
       if (this.turns.activePlayer === 1) {
         const actionType = this.turns.hasPlaced() ? "pass" : "done";
+
+        // Online tactical phase: handle "done" separately
+        if (this.network && this.game.isTactical && actionType === "done") {
+          this.onLocalTacticalDone();
+          return;
+        }
+
         this.turns.onActionButton();
         if (this.network) {
           this.network.sendAction({
@@ -405,6 +405,13 @@ export class UIController {
       if (!this.isLocalPlayer(2)) return;
       if (this.turns.activePlayer === 2) {
         const actionType = this.turns.hasPlaced() ? "pass" : "done";
+
+        // Online tactical phase: handle "done" separately
+        if (this.network && this.game.isTactical && actionType === "done") {
+          this.onLocalTacticalDone();
+          return;
+        }
+
         this.turns.onActionButton();
         if (this.network) {
           this.network.sendAction({
@@ -437,8 +444,12 @@ export class UIController {
       this.dom.previewToggle2.textContent = playing ? "⏸" : "▶";
     });
   }
+  //#endregion
 
   //#region Phase Management
+
+  // ── Placement Phase ──────────────────────────────────────────────
+
   private startPlacementPhase(): void {
     this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
     this.turns.startClock(CONFIG.CHESS_CLOCK_PLACEMENT_SEC);
@@ -451,210 +462,284 @@ export class UIController {
     this.dom.turnTimerContainer.style.visibility = "hidden";
 
     if (this.network) {
-      console.log(`[Sync] Placement phase ended, gen=${this.game.currentGeneration} hash=${this.game.gridHash()} p1=${this.game.pointsPlayer1} p2=${this.game.pointsPlayer2}`);
-      this.beginSyncCheckAndPhaseReady("placement→simulation");
+      console.log(
+        `[Sync] Placement phase ended, gen=${this.game.currentGeneration} hash=${this.game.gridHash()} p1=${this.game.pointsPlayer1} p2=${this.game.pointsPlayer2}`,
+      );
+      this.beginPhaseReadyHandshake("simulation");
       return;
     }
 
     this.startSimulation();
   }
+
+  // ── Simulation Phase ─────────────────────────────────────────────
 
   private startSimulation(): void {
     this.stopAnimation();
 
     if (this.network) {
-      console.log(`[Sync] Simulation starting, gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`);
+      console.log(
+        `[Sync] Simulation starting, gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`,
+      );
     }
 
     this.animateSimulation();
   }
 
+  // ── Tactical Phase ───────────────────────────────────────────────
+
   private startTacticalPhase(): void {
     this.stopAnimation();
     this.game.setPhase("tactical");
 
-    // Online: sync check before starting the tactical phase
     if (this.network) {
-      console.log(`[Sync] Tactical phase triggered at gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`);
+      console.log(
+        `[Sync] Tactical phase triggered at gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`,
+      );
       this.showWaitingOverlay();
-      this.beginSyncCheckAndPhaseReady("simulation→tactical");
+      this.beginPhaseReadyHandshake("tactical");
       return;
     }
 
-    // Local mode: start immediately
     this.beginTacticalPhaseAfterSync();
   }
 
-  // Called after sync check completes (or directly in local mode)
   private beginTacticalPhaseAfterSync(): void {
-    // Initialize rollback manager for online mode
     if (this.network) {
       this.rollback = new RollbackManager(this.game);
       this.rollback.takeSnapshot();
       this.hideWaitingOverlay();
+
+      this.localTacticalDone = false;
+      this.remoteTacticalDone = false;
     }
 
-    this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
+    // Wire onPhaseEnd for tactical phase
+    if (this.network) {
+      this.turns.onPhaseEnd = () => {
+        // Timeout or both can't afford — treat as local done
+        if (!this.localTacticalDone) {
+          console.log(
+            `[TacticalDone] Clock expired / no budget, marking local done`,
+          );
+          this.onLocalTacticalDone();
+        }
+      };
+    } else {
+      this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
+    }
+
     this.turns.startClock(CONFIG.CHESS_CLOCK_TACTICAL_SEC);
     this.updateActivePlayerUI();
-
-    // Start slow animation alongside placement
     this.animateTactical();
   }
 
+  // ── Tactical Done Handling (online only) ─────────────────────────
+
+  private onLocalTacticalDone(): void {
+    if (this.localTacticalDone) return;
+    this.localTacticalDone = true;
+    console.log(
+      `[TacticalDone] Local player done at gen=${this.game.currentGeneration}`,
+    );
+
+    this.network!.sendAction({ type: "done", player: this.localPlayer! });
+    this.turns.markPlayerDone(this.localPlayer!);
+    this.checkTacticalBothDone();
+  }
+
+  private onRemoteTacticalDone(): void {
+    if (this.remoteTacticalDone) return;
+    this.remoteTacticalDone = true;
+    console.log(`[TacticalDone] Remote player done`);
+
+    const remotePlayer: Player = this.localPlayer === 1 ? 2 : 1;
+    this.turns.markPlayerDone(remotePlayer);
+    this.checkTacticalBothDone();
+  }
+
+  private checkTacticalBothDone(): void {
+    if (!this.localTacticalDone || !this.remoteTacticalDone) {
+      console.log(
+        `[TacticalDone] Waiting — local=${this.localTacticalDone} remote=${this.remoteTacticalDone}`,
+      );
+      return;
+    }
+
+    console.log(`[TacticalDone] Both done — stopping animation, starting sync`);
+
+    this.stopAnimation();
+    this.turns.stopClock();
+    this.game.setPhase("simulation");
+    this.disableAllControls();
+    this.dom.turnTimerContainer.style.visibility = "hidden";
+
+    this.showWaitingOverlay();
+
+    if (this.rollback) {
+      console.log(
+        this.rollback.formatSyncLog("tactical→simulation", this.localPlayer!),
+      );
+    }
+
+    // Send phaseReady WITH sync hash — both in one Firestore write, no race condition
+    const syncHash = this.rollback
+      ? this.rollback.buildSyncHash(this.game)
+      : `${this.game.currentGeneration}|${this.game.gridHash()}|${this.game.pointsPlayer1}|${this.game.pointsPlayer2}|0`;
+
+    console.log(`[SyncCheck] Sending phaseReady with syncHash: ${syncHash}`);
+
+    this.localPhaseReadyCount++;
+    this.awaitingRemotePhaseReady = true;
+    this.phaseReadyTarget = "simulation";
+    this.network!.sendPhaseReadyWithSync(syncHash);
+
+    // Check if remote already sent theirs
+    this.tryCompleteTacticalSync();
+  }
+
+  // Called when tactical phase ends in local mode (no network)
   private onTacticalPhaseEnd(): void {
     this.stopAnimation();
     this.game.setPhase("simulation");
     this.disableAllControls();
     this.dom.turnTimerContainer.style.visibility = "hidden";
-
-    if (this.network) {
-      // Log sync status before the check
-      if (this.rollback) {
-        console.log(this.rollback.formatSyncLog("tactical→simulation", this.localPlayer!));
-      }
-
-      // Clean up rollback state
-      if (this.rollback) {
-        this.rollback.clear();
-        this.rollback = null;
-      }
-
-      this.beginSyncCheckAndPhaseReady("tactical→simulation");
-      return;
-    }
-
     this.startSimulation();
   }
 
-  //#region Sync Check + Phase Ready (combined handshake)
-  // Sends a syncCheck action with local state AND phaseReady signal.
-  // Both must arrive before simulation continues.
-  private beginSyncCheckAndPhaseReady(transitionLabel: string): void {
-    this.showWaitingOverlay();
+  // ── Phase-Ready Handshake ────────────────────────────────────────
 
-    const actionHash = this.rollback?.actionQueueHash() ?? 0;
+  private beginPhaseReadyHandshake(target: "simulation" | "tactical"): void {
+    this.localPhaseReadyCount++;
+    this.awaitingRemotePhaseReady = true;
+    this.phaseReadyTarget = target;
+    this.network!.sendPhaseReady();
 
-    // Store local sync data
-    this.localSyncData = {
+    console.log(
+      `[PhaseReady] Sent phase ready #${this.localPhaseReadyCount} (target=${target}), awaiting remote`,
+    );
+
+    if (this.remotePhaseReadyCount >= this.localPhaseReadyCount) {
+      console.log(
+        `[PhaseReady] Remote already at #${this.remotePhaseReadyCount}, proceeding`,
+      );
+      this.awaitingRemotePhaseReady = false;
+      this.onPhaseReadyComplete(target);
+    }
+  }
+
+  private handleRemotePhaseReady(counter: number): void {
+    console.log(
+      `[PhaseReady] Remote phase ready #${counter}, local at #${this.localPhaseReadyCount}`,
+    );
+    this.remotePhaseReadyCount = counter;
+
+    if (
+      this.awaitingRemotePhaseReady &&
+      this.remotePhaseReadyCount >= this.localPhaseReadyCount
+    ) {
+      console.log(
+        `[PhaseReady] Both ready, proceeding (target=${this.phaseReadyTarget})`,
+      );
+      this.awaitingRemotePhaseReady = false;
+      const target = this.phaseReadyTarget!;
+      this.phaseReadyTarget = null;
+
+      // Tactical end: don't start simulation yet, wait for syncHash comparison
+      if (this.localTacticalDone && this.remoteTacticalDone) {
+        this.tryCompleteTacticalSync();
+        return;
+      }
+
+      this.onPhaseReadyComplete(target);
+    }
+  }
+
+  private handleRemoteSyncHash(hash: string): void {
+    console.log(`[SyncCheck] Received remote syncHash: ${hash}`);
+    this.remoteSyncHash = hash;
+
+    // Try to complete tactical sync if we're waiting
+    this.tryCompleteTacticalSync();
+  }
+
+  private onPhaseReadyComplete(target: "simulation" | "tactical"): void {
+    if (target === "simulation") {
+      this.startSimulation();
+    } else if (target === "tactical") {
+      this.beginTacticalPhaseAfterSync();
+    }
+  }
+
+  // ── Tactical End Sync (via phaseReady + syncHash) ────────────────
+
+  private tryCompleteTacticalSync(): void {
+    // Need both: phaseReady from remote AND syncHash from remote
+    if (this.awaitingRemotePhaseReady) return;
+    if (this.remoteSyncHash === null) return;
+
+    const remote = RollbackManager.parseSyncHash(this.remoteSyncHash);
+    const local = {
       generation: this.game.currentGeneration,
       gridHash: this.game.gridHash(),
       pointsPlayer1: this.game.pointsPlayer1,
       pointsPlayer2: this.game.pointsPlayer2,
-      actionHash,
+      actionHash: this.rollback?.actionQueueHash() ?? 0,
     };
-    this.remoteSyncData = null;
-    this.awaitingSyncCheck = true;
-
-    console.log(`[SyncCheck] Sending sync check for "${transitionLabel}": gen=${this.localSyncData.generation} hash=${this.localSyncData.gridHash} p1=${this.localSyncData.pointsPlayer1} p2=${this.localSyncData.pointsPlayer2} actionHash=${actionHash}`);
-
-    // Send syncCheck action
-    this.network!.sendAction({
-      type: "syncCheck",
-      player: this.localPlayer!,
-      generation: this.localSyncData.generation,
-      gridHash: this.localSyncData.gridHash,
-      pointsPlayer1: this.localSyncData.pointsPlayer1,
-      pointsPlayer2: this.localSyncData.pointsPlayer2,
-      actionHash,
-    });
-
-    // Also send phaseReady
-    this.localPhaseReadyCount++;
-    this.awaitingRemotePhaseReady = true;
-    this.network!.sendPhaseReady();
-
-    // Check if remote already sent both
-    this.tryCompleteSyncHandshake(transitionLabel);
-  }
-
-  // Called when remote syncCheck arrives
-  private handleRemoteSyncCheck(data: {
-    generation: number;
-    gridHash: number;
-    pointsPlayer1: number;
-    pointsPlayer2: number;
-    actionHash: number;
-  }, transitionLabel: string): void {
-    console.log(`[SyncCheck] Received remote sync: gen=${data.generation} hash=${data.gridHash} p1=${data.pointsPlayer1} p2=${data.pointsPlayer2} actionHash=${data.actionHash}`);
-
-    this.remoteSyncData = data;
-    this.tryCompleteSyncHandshake(transitionLabel);
-  }
-
-  // Try to complete the combined sync check + phase ready handshake
-  private tryCompleteSyncHandshake(transitionLabel: string): void {
-    // Need both syncCheck and phaseReady from remote
-    if (!this.awaitingSyncCheck || !this.remoteSyncData || !this.localSyncData) return;
-    if (this.awaitingRemotePhaseReady && this.remotePhaseReadyCount < this.localPhaseReadyCount) return;
-
-    // Both sync checks received — compare
-    const local = this.localSyncData;
-    const remote = this.remoteSyncData;
 
     const genMatch = local.generation === remote.generation;
     const hashMatch = local.gridHash === remote.gridHash;
-    const pointsMatch = local.pointsPlayer1 === remote.pointsPlayer1 && local.pointsPlayer2 === remote.pointsPlayer2;
+    const pointsMatch =
+      local.pointsPlayer1 === remote.pointsPlayer1 &&
+      local.pointsPlayer2 === remote.pointsPlayer2;
     const actionMatch = local.actionHash === remote.actionHash;
 
     if (genMatch && hashMatch && pointsMatch) {
-      console.log(`[SyncCheck] ✓ IN SYNC — gen=${local.generation} hash=${local.gridHash} actionMatch=${actionMatch}`);
+      console.log(
+        `[SyncCheck] ✓ IN SYNC — gen=${local.generation} hash=${local.gridHash} actionMatch=${actionMatch}`,
+      );
+      this.completeTacticalSync();
     } else {
       console.warn(
-        `[SyncCheck] ✗ DIVERGED at "${transitionLabel}"\n` +
-        `  Local:  gen=${local.generation} hash=${local.gridHash} p=${local.pointsPlayer1}/${local.pointsPlayer2} aHash=${local.actionHash}\n` +
-        `  Remote: gen=${remote.generation} hash=${remote.gridHash} p=${remote.pointsPlayer1}/${remote.pointsPlayer2} aHash=${remote.actionHash}`,
+        `[SyncCheck] ✗ DIVERGED at tactical end\n` +
+          `  Local:  gen=${local.generation} hash=${local.gridHash} p=${local.pointsPlayer1}/${local.pointsPlayer2} aHash=${local.actionHash}\n` +
+          `  Remote: gen=${remote.generation} hash=${remote.gridHash} p=${remote.pointsPlayer1}/${remote.pointsPlayer2} aHash=${remote.actionHash}`,
       );
 
-      // P1 is authoritative: P1 sends its grid state, P2 will receive and apply
       if (this.localPlayer === 1) {
         console.log(`[SyncCheck] P1 authoritative — sending grid fix`);
         this.network!.sendAction({
           type: "syncFix",
-          grid: this.game.grid,
+          gridData: RollbackManager.serializeGrid(this.game.grid),
+          rows: this.game.rows,
+          cols: this.game.cols,
           pointsPlayer1: this.game.pointsPlayer1,
           pointsPlayer2: this.game.pointsPlayer2,
           generation: this.game.currentGeneration,
         });
+        this.completeTacticalSync();
       }
-      // P2 waits for syncFix (handled in handleRemoteAction)
-      if (this.localPlayer === 2) {
-        console.log(`[SyncCheck] P2 waiting for authoritative grid fix from P1`);
-        // Don't proceed yet — syncFix handler will call completeTransition
-        return;
-      }
-    }
-
-    // Clean up and proceed
-    this.completeTransition(transitionLabel);
-  }
-
-  // Called after sync is verified (or after syncFix applied)
-  private completeTransition(transitionLabel: string): void {
-    this.awaitingSyncCheck = false;
-    this.awaitingRemotePhaseReady = false;
-    this.localSyncData = null;
-    this.remoteSyncData = null;
-    this.hideWaitingOverlay();
-
-    if (transitionLabel === "simulation→tactical") {
-      this.beginTacticalPhaseAfterSync();
-    } else {
-      // placement→simulation or tactical→simulation
-      this.startSimulation();
+      // P2 waits for syncFix — handled in handleRemoteAction
     }
   }
 
-  // Apply authoritative grid from P1 (P2 only)
   private handleSyncFix(data: {
-    grid: boolean[][];
+    gridData: string;
+    rows: number;
+    cols: number;
     pointsPlayer1: number;
     pointsPlayer2: number;
     generation: number;
   }): void {
-    console.log(`[SyncCheck] Applying sync fix from P1: gen=${data.generation} p1=${data.pointsPlayer1} p2=${data.pointsPlayer2}`);
+    console.log(
+      `[SyncCheck] Applying sync fix from P1: gen=${data.generation} p1=${data.pointsPlayer1} p2=${data.pointsPlayer2}`,
+    );
 
-    this.game.grid = data.grid.map((row: boolean[]) => [...row]);
+    this.game.grid = RollbackManager.deserializeGrid(
+      data.gridData,
+      data.rows,
+      data.cols,
+    );
     this.game.pointsPlayer1 = data.pointsPlayer1;
     this.game.pointsPlayer2 = data.pointsPlayer2;
     this.game.currentGeneration = data.generation;
@@ -665,38 +750,22 @@ export class UIController {
 
     console.log(`[SyncCheck] Fix applied, new hash=${this.game.gridHash()}`);
 
-    // Now we can proceed — determine transition from context
-    // The syncFix always comes during an active sync handshake
-    if (this.awaitingSyncCheck) {
-      // Determine transition label from game state
-      const label = this.game.isTactical ? "simulation→tactical" : "tactical→simulation";
-      this.completeTransition(label);
-    }
+    this.completeTacticalSync();
   }
 
-  // Called when remote player's phaseReady counter updates
-  private handleRemotePhaseReady(counter: number): void {
-    console.log(`[PhaseReady] Remote phase ready #${counter}, local at #${this.localPhaseReadyCount}`);
-    this.remotePhaseReadyCount = counter;
+  private completeTacticalSync(): void {
+    this.remoteSyncHash = null;
+    this.phaseReadyTarget = null;
+    this.hideWaitingOverlay();
 
-    // If we're in a sync handshake, try to complete it
-    if (this.awaitingSyncCheck) {
-      // We need to know the transition label — infer from game state
-      const label = this.game.isSimulation
-        ? (this.game.currentGeneration === 0 ? "placement→simulation" : "tactical→simulation")
-        : "simulation→tactical";
-      this.tryCompleteSyncHandshake(label);
-      return;
+    if (this.rollback) {
+      this.rollback.clear();
+      this.rollback = null;
     }
 
-    // Legacy path (shouldn't happen with new flow, but keep as safety)
-    if (this.awaitingRemotePhaseReady && this.remotePhaseReadyCount >= this.localPhaseReadyCount) {
-      console.log(`[PhaseReady] Both ready, starting simulation`);
-      this.awaitingRemotePhaseReady = false;
-      this.startSimulation();
-    }
+    this.startSimulation();
   }
-  //#endregion
+
   //#endregion
 
   //#region Animation
@@ -711,7 +780,6 @@ export class UIController {
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
 
-    // Show floating score effects
     if (this.game.scoreEvents.length > 0) {
       this.scoreEffects.feed(this.game.scoreEvents);
     }
@@ -721,7 +789,6 @@ export class UIController {
       return;
     }
 
-    // Check for tactical phase trigger
     if (this.game.shouldTriggerTactical()) {
       this.startTacticalPhase();
       return;
@@ -740,29 +807,11 @@ export class UIController {
       return;
     }
 
-    // If phase switched back to simulation, hand off
     if (this.game.isSimulation) {
       this.stopAnimation();
-
-      // Clean up rollback state (will be logged in onTacticalPhaseEnd)
-      // Note: this path is reached when TurnManager ends the phase
       return;
     }
 
-    // Apply any queued actions for the current generation
-    // (from future-tagged remote placements that arrived early)
-    if (this.rollback) {
-      const pendingActions = this.rollback.getActionsForGeneration(this.game.currentGeneration);
-      for (const action of pendingActions) {
-        // Only apply remote actions that haven't been applied yet
-        // (local actions were already applied immediately on click)
-        if (!this.isLocalPlayer(action.player)) {
-          this.rollback.applyPlacement(action);
-        }
-      }
-    }
-
-    // Compute next generation
     this.game.computeNextGeneration();
     this.renderer.drawGrid();
     this.updatePointsDisplay();
@@ -781,7 +830,6 @@ export class UIController {
     this.scheduleNextTacticalFrame();
   }
 
-  // Schedule the next tactical animation frame at the slow FPS rate
   private scheduleNextTacticalFrame(): void {
     const delay = 1000 / CONFIG.FPS_SLOW;
     this.animationId = window.setTimeout(() => {
@@ -808,14 +856,12 @@ export class UIController {
 
     const playerPattern = getPatternForPlayer(pattern, player);
 
-    // P2: offset so pattern appears left of cursor
     let offsetCol = 0;
     if (player === 2) {
       const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
       offsetCol = -maxC;
     }
 
-    // Validate against mouse position
     const isValid = this.game.zones.isValidPlacement(col, player);
 
     const ctx = this.dom.gameCanvas.getContext("2d")!;
@@ -840,7 +886,6 @@ export class UIController {
   private updateActivePlayerUI(): void {
     const active = this.turns.activePlayer;
 
-    // Player header glow
     this.dom.player1Btn.style.opacity = active === 1 ? "1" : "0.5";
     this.dom.player1Btn.style.boxShadow =
       active === 1 ? `0 0 15px ${CONFIG.COLOR_PLAYER1}` : "none";
@@ -848,19 +893,15 @@ export class UIController {
     this.dom.player2Btn.style.boxShadow =
       active === 2 ? `0 0 15px ${CONFIG.COLOR_PLAYER2}` : "none";
 
-    // Pattern buttons
     this.enablePlayerPatterns(active);
     this.disablePlayerPatterns(active === 1 ? 2 : 1);
     this.updatePatternButtonStates();
 
-    // Preview
     this.enablePreview(active);
     this.disablePreview(active === 1 ? 2 : 1);
 
-    // Action buttons (Pass/Done)
     this.turns.updateButtonText();
 
-    // Surrender buttons - both always active during placement/tactical
     this.dom.surrender1Btn.disabled = false;
     this.dom.surrender1Btn.style.opacity = "1";
     this.dom.surrender2Btn.disabled = false;
@@ -912,7 +953,6 @@ export class UIController {
       btn.style.opacity = !isActive ? "0.3" : canAfford ? "1" : "0.3";
     }
 
-    // Deselect if too expensive
     if (
       this.selectedPattern1 &&
       this.game.pointsPlayer1 < this.selectedPattern1.cells.length
@@ -1004,11 +1044,9 @@ export class UIController {
     this.turns.stopClock();
     this.stopAnimation();
     this.awaitingRemotePhaseReady = false;
-    this.awaitingSyncCheck = false;
     this.hideWaitingOverlay();
     this.dom.turnTimerContainer.style.visibility = "hidden";
 
-    // Clean up rollback state
     if (this.rollback) {
       this.rollback.clear();
       this.rollback = null;
@@ -1037,11 +1075,16 @@ export class UIController {
 
   //#region Network
   private handleRemoteAction(action: GameAction): void {
-    console.log("[Remote]", action.type, "player" in action ? `P${action.player}` : "");
+    console.log(
+      "[Remote]",
+      action.type,
+      "player" in action
+        ? `P${"player" in action ? (action as any).player : ""}`
+        : "",
+    );
 
     switch (action.type) {
       case "placePattern":
-        // Used during placement phase only
         this.executePlace(
           action.player,
           action.patternIndex,
@@ -1059,25 +1102,19 @@ export class UIController {
         break;
 
       case "pass":
-      case "done":
         this.turns.onActionButton();
+        break;
+
+      case "done":
+        if (this.game.isTactical && this.network) {
+          this.onRemoteTacticalDone();
+        } else {
+          this.turns.onActionButton();
+        }
         break;
 
       case "surrender":
         this.executeSurrender(action.player);
-        break;
-
-      case "syncCheck":
-        this.handleRemoteSyncCheck(
-          {
-            generation: action.generation,
-            gridHash: action.gridHash,
-            pointsPlayer1: action.pointsPlayer1,
-            pointsPlayer2: action.pointsPlayer2,
-            actionHash: action.actionHash,
-          },
-          "remote",
-        );
         break;
 
       case "syncFix":
@@ -1086,7 +1123,6 @@ export class UIController {
     }
   }
 
-  // Handle a remote placement during the tactical phase (rollback-aware)
   private handleRemoteTacticalPlace(action: {
     player: Player;
     patternIndex: number;
@@ -1095,8 +1131,12 @@ export class UIController {
     generation: number;
   }): void {
     if (!this.rollback) {
-      // Fallback: no rollback manager (shouldn't happen), apply directly
-      this.executePlace(action.player, action.patternIndex, action.row, action.col);
+      this.executePlace(
+        action.player,
+        action.patternIndex,
+        action.row,
+        action.col,
+      );
       return;
     }
 
@@ -1108,23 +1148,24 @@ export class UIController {
       generation: action.generation,
     };
 
-    // Always add to the queue
+    // Always apply directly and add to queue for rollback
+    this.executePlace(
+      action.player,
+      action.patternIndex,
+      action.row,
+      action.col,
+    );
     this.rollback.addAction(actionGen);
 
-    if (action.generation === this.game.currentGeneration) {
-      // Same generation: apply directly, no rollback needed
-      console.log(`[Rollback] Remote placement at current gen=${action.generation}, applying directly`);
-      this.rollback.applyPlacement(actionGen);
-    } else if (action.generation < this.game.currentGeneration) {
-      // Past generation: need rollback + resimulation
-      console.log(`[Rollback] Remote placement at past gen=${action.generation}, current=${this.game.currentGeneration}, rolling back`);
+    // Past generation: need rollback to correct the timeline
+    if (action.generation < this.game.currentGeneration) {
+      console.log(
+        `[Rollback] Remote placement at past gen=${action.generation}, current=${this.game.currentGeneration}, rolling back`,
+      );
       this.rollback.rollback();
       this.updatePointsDisplay();
       this.updatePatternButtonStates();
       this.renderer.drawGrid();
-    } else {
-      // Future generation: already in queue, will be applied when we reach that generation
-      console.log(`[Rollback] Remote placement at future gen=${action.generation}, current=${this.game.currentGeneration}, queued`);
     }
   }
   //#endregion
@@ -1134,12 +1175,12 @@ export class UIController {
     this.turns.reset();
     this.stopAnimation();
     this.awaitingRemotePhaseReady = false;
-    this.awaitingSyncCheck = false;
-    this.localSyncData = null;
-    this.remoteSyncData = null;
+    this.phaseReadyTarget = null;
+    this.remoteSyncHash = null;
+    this.localTacticalDone = false;
+    this.remoteTacticalDone = false;
     this.hideWaitingOverlay();
 
-    // Clean up rollback state
     if (this.rollback) {
       this.rollback.clear();
       this.rollback = null;
@@ -1147,10 +1188,8 @@ export class UIController {
 
     this.dom.winnerOverlay.style.display = "none";
 
-    // In online mode: go back to lobby
     if (this.network) {
       this.network.disconnect();
-      // Show lobby by reloading (simplest approach)
       window.location.reload();
       return;
     }
@@ -1165,7 +1204,6 @@ export class UIController {
     this.updatePointsDisplay();
     this.updateGenerationDisplay();
 
-    // Clear previews
     this.previewRenderer1.drawPreview(null, 1);
     this.previewRenderer2.drawPreview(null, 2);
     this.updatePatternInfo(1, null);
@@ -1173,7 +1211,6 @@ export class UIController {
     this.dom.previewToggle1.textContent = "▶";
     this.dom.previewToggle2.textContent = "▶";
 
-    // Restart placement phase
     this.startPlacementPhase();
   }
   //#endregion

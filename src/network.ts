@@ -21,8 +21,7 @@ export type GameAction =
   | { type: "done"; player: Player }
   | { type: "surrender"; player: Player }
   | { type: "startGame" }
-  | { type: "syncCheck"; player: Player; generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number }
-  | { type: "syncFix"; grid: boolean[][]; pointsPlayer1: number; pointsPlayer2: number; generation: number };
+  | { type: "syncFix"; gridData: string; rows: number; cols: number; pointsPlayer1: number; pointsPlayer2: number; generation: number };
 
 export interface GameResult {
   winner: Player | null;
@@ -66,8 +65,11 @@ export class Network {
   // Callback when opponent disconnects
   onOpponentLeft: (() => void) | null = null;
 
-  // Callback when remote player signals phase ready (placement/tactical → simulation)
+  // Callback when remote player signals phase ready
   onRemotePhaseReady: ((counter: number) => void) | null = null;
+
+  // Callback when remote player's sync hash arrives (for tactical end sync)
+  onRemoteSyncHash: ((syncHash: string) => void) | null = null;
 
   constructor() {
     this.sessionId = generateSessionId();
@@ -88,6 +90,8 @@ export class Network {
       actionCounter: 0,
       player1PhaseReady: 0,
       player2PhaseReady: 0,
+      player1SyncHash: null,
+      player2SyncHash: null,
       createdAt: serverTimestamp(),
     });
 
@@ -143,18 +147,37 @@ export class Network {
     });
   }
 
-  // Signal that this player is ready to start simulation after placement/tactical phase
+  // Signal that this player is ready for the next phase (no sync data)
   async sendPhaseReady(): Promise<void> {
     if (!this.gameId || !this.localPlayer) return;
 
     const gameRef = doc(db, "games", this.gameId);
     const field = this.localPlayer === 1 ? "player1PhaseReady" : "player2PhaseReady";
+    const syncField = this.localPlayer === 1 ? "player1SyncHash" : "player2SyncHash";
 
     const snapshot = await getDoc(gameRef);
     const current = snapshot.data()?.[field] ?? 0;
 
     await updateDoc(gameRef, {
       [field]: current + 1,
+      [syncField]: null, // Clear any previous sync hash
+    });
+  }
+
+  // Signal phase ready WITH sync data (used at tactical phase end)
+  async sendPhaseReadyWithSync(syncHash: string): Promise<void> {
+    if (!this.gameId || !this.localPlayer) return;
+
+    const gameRef = doc(db, "games", this.gameId);
+    const field = this.localPlayer === 1 ? "player1PhaseReady" : "player2PhaseReady";
+    const syncField = this.localPlayer === 1 ? "player1SyncHash" : "player2SyncHash";
+
+    const snapshot = await getDoc(gameRef);
+    const current = snapshot.data()?.[field] ?? 0;
+
+    await updateDoc(gameRef, {
+      [field]: current + 1,
+      [syncField]: syncHash,
     });
   }
 
@@ -186,6 +209,7 @@ export class Network {
     let lastActionCounter = -1;
     let opponentJoinedFired = false;
     let lastRemotePhaseReady = 0;
+    let lastRemoteSyncHash: string | null = null;
 
     this.unsubscribe = onSnapshot(gameRef, (snapshot) => {
       const data = snapshot.data();
@@ -226,6 +250,16 @@ export class Network {
       if (remotePhaseReady > lastRemotePhaseReady) {
         lastRemotePhaseReady = remotePhaseReady;
         this.onRemotePhaseReady?.(remotePhaseReady);
+      }
+
+      // Check remote player's sync hash (may arrive with or after phaseReady)
+      const remoteSyncHash = this.localPlayer === 1
+        ? (data.player2SyncHash ?? null)
+        : (data.player1SyncHash ?? null);
+
+      if (remoteSyncHash !== null && remoteSyncHash !== lastRemoteSyncHash) {
+        lastRemoteSyncHash = remoteSyncHash;
+        this.onRemoteSyncHash?.(remoteSyncHash);
       }
     });
   }
