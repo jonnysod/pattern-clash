@@ -8,7 +8,7 @@ export const CONFIG = {
 
   // Game
   INITIAL_BUDGET: 80,
-  MAX_GENERATIONS: 200,
+  MAX_GENERATIONS: 800,
   SCORE_POINTS: 2,
 
   // Animation
