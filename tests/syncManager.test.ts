@@ -88,7 +88,12 @@ function createMockNetwork(localPlayer: Player): MockNetwork {
 interface CallLog {
   startSimulation: number;
   beginTacticalPhaseAfterSync: number;
-  executePlace: { player: Player; patternIndex: number; row: number; col: number }[];
+  executePlace: {
+    player: Player;
+    patternIndex: number;
+    row: number;
+    col: number;
+  }[];
   executeSelectPattern: { player: Player; patternIndex: number }[];
   executeSurrender: Player[];
   handleTurnAction: number;
@@ -117,8 +122,12 @@ function createMockCallbacks(): { callbacks: SyncCallbacks; log: CallLog } {
   };
 
   const callbacks: SyncCallbacks = {
-    startSimulation: () => { log.startSimulation++; },
-    beginTacticalPhaseAfterSync: () => { log.beginTacticalPhaseAfterSync++; },
+    startSimulation: () => {
+      log.startSimulation++;
+    },
+    beginTacticalPhaseAfterSync: () => {
+      log.beginTacticalPhaseAfterSync++;
+    },
     executePlace: (player, patternIndex, row, col) => {
       log.executePlace.push({ player, patternIndex, row, col });
       return true;
@@ -126,14 +135,30 @@ function createMockCallbacks(): { callbacks: SyncCallbacks; log: CallLog } {
     executeSelectPattern: (player, patternIndex) => {
       log.executeSelectPattern.push({ player, patternIndex });
     },
-    executeSurrender: (player) => { log.executeSurrender.push(player); },
-    handleTurnAction: () => { log.handleTurnAction++; },
-    markPlayerDone: (player) => { log.markPlayerDone.push(player); },
-    enterSimulationPhase: () => { log.enterSimulationPhase++; },
-    stopAnimationAndClock: () => { log.stopAnimationAndClock++; },
-    refreshDisplay: () => { log.refreshDisplay++; },
-    showWaitingOverlay: () => { log.showWaitingOverlay++; },
-    hideWaitingOverlay: () => { log.hideWaitingOverlay++; },
+    executeSurrender: (player) => {
+      log.executeSurrender.push(player);
+    },
+    handleTurnAction: () => {
+      log.handleTurnAction++;
+    },
+    markPlayerDone: (player) => {
+      log.markPlayerDone.push(player);
+    },
+    enterSimulationPhase: () => {
+      log.enterSimulationPhase++;
+    },
+    stopAnimationAndClock: () => {
+      log.stopAnimationAndClock++;
+    },
+    refreshDisplay: () => {
+      log.refreshDisplay++;
+    },
+    showWaitingOverlay: () => {
+      log.showWaitingOverlay++;
+    },
+    hideWaitingOverlay: () => {
+      log.hideWaitingOverlay++;
+    },
   };
 
   return { callbacks, log };
@@ -201,7 +226,11 @@ test("Placement done: remote first, then local → startSimulation", () => {
 
   // Remote ready arrives before local calls onPlacementDone
   fireRemotePhaseReady(net, 1);
-  assertEqual(log.startSimulation, 0, "simulation not started yet (no local ready)");
+  assertEqual(
+    log.startSimulation,
+    0,
+    "simulation not started yet (no local ready)",
+  );
 
   sync.onPlacementDone();
   assertEqual(net.phaseReadySent, 1, "phaseReady sent");
@@ -236,10 +265,18 @@ test("Tactical start: remote first, then local → beginTacticalPhaseAfterSync",
 
   // Remote ready for tactical arrives early
   fireRemotePhaseReady(net, 2);
-  assertEqual(log.beginTacticalPhaseAfterSync, 0, "tactical not started (no local ready)");
+  assertEqual(
+    log.beginTacticalPhaseAfterSync,
+    0,
+    "tactical not started (no local ready)",
+  );
 
   sync.onTacticalStart();
-  assertEqual(log.beginTacticalPhaseAfterSync, 1, "tactical started immediately");
+  assertEqual(
+    log.beginTacticalPhaseAfterSync,
+    1,
+    "tactical started immediately",
+  );
 });
 
 test("Multiple handshakes: counters track correctly across phases", () => {
@@ -276,7 +313,7 @@ test("Local done first, then remote done → sync starts", () => {
 
   // Set game phase to tactical (normally done by UIController)
   game.setPhase("simulation"); // valid: placement → simulation (done by handshake)
-  game.setPhase("tactical");   // valid: simulation → tactical
+  game.setPhase("tactical"); // valid: simulation → tactical
 
   // Local done
   sync.onLocalTacticalDone();
@@ -284,14 +321,22 @@ test("Local done first, then remote done → sync starts", () => {
   assertEqual(log.markPlayerDone[0], 1, "P1 marked done");
   assertEqual(net.sentActions.length, 1, "done action sent");
   assertEqual(net.sentActions[0]!.type, "done", "action type is done");
-  assertEqual(log.stopAnimationAndClock, 0, "not stopped yet (waiting for remote)");
+  assertEqual(
+    log.stopAnimationAndClock,
+    0,
+    "not stopped yet (waiting for remote)",
+  );
 
   // Remote done
   fireRemoteAction(net, { type: "done", player: 2 });
   assertEqual(log.markPlayerDone.length, 2, "remote player also marked done");
   assertEqual(log.stopAnimationAndClock, 1, "animation+clock stopped");
   assertEqual(log.enterSimulationPhase, 1, "entered simulation phase");
-  assertEqual(log.showWaitingOverlay, 2, "overlay shown for sync (1 for tactical start + 1 for sync)");
+  assertEqual(
+    log.showWaitingOverlay,
+    2,
+    "overlay shown for sync (1 for tactical start + 1 for sync)",
+  );
 });
 
 test("Remote done first, then local done → sync starts", () => {
@@ -346,6 +391,37 @@ test("Remote done is idempotent (double-fire guard)", () => {
   assertEqual(log.markPlayerDone.length, 1, "markPlayerDone called once");
 });
 
+test("Tactical done flags are reset after completeTacticalSync (no stale state for next tactical)", () => {
+  const { game, net, sync, log } = createTestSetup();
+
+  // First tactical phase: full cycle
+  sync.onPlacementDone();
+  fireRemotePhaseReady(net, 1);
+  sync.onTacticalStart();
+  fireRemotePhaseReady(net, 2);
+  game.setPhase("simulation");
+  game.setPhase("tactical");
+
+  sync.onLocalTacticalDone();
+  fireRemoteAction(net, { type: "done", player: 2 });
+
+  const matchingHash = buildMatchingSyncHash(game);
+  fireRemotePhaseReady(net, 3);
+  fireRemoteSyncHash(net, matchingHash);
+
+  assertEqual(log.startSimulation, 2, "first tactical sync completed");
+
+  // Second tactical phase: handshake should proceed normally
+  sync.onTacticalStart();
+  fireRemotePhaseReady(net, 4);
+
+  assertEqual(
+    log.beginTacticalPhaseAfterSync,
+    2,
+    "second tactical phase started",
+  );
+  assert(sync.hasRollback, "new rollback created for second tactical phase");
+});
 // ── Sync Hash Comparison ───────────────────────────────────────────
 
 console.log("\n  Sync Hash Comparison\n");
@@ -374,8 +450,16 @@ test("Matching sync hash → completeTacticalSync → startSimulation", () => {
   fireRemoteSyncHash(net, matchingHash);
 
   // Should complete sync and start simulation
-  assertEqual(log.startSimulation, 2, "simulation started (1 from placement + 1 from tactical sync)");
-  assertEqual(log.hideWaitingOverlay, 2, "overlay hidden (1 tactical init + 1 sync complete)");
+  assertEqual(
+    log.startSimulation,
+    2,
+    "simulation started (1 from placement + 1 from tactical sync)",
+  );
+  assertEqual(
+    log.hideWaitingOverlay,
+    2,
+    "overlay hidden (1 tactical init + 1 sync complete)",
+  );
   assert(!sync.hasRollback, "rollback cleaned up");
 });
 
@@ -398,7 +482,7 @@ test("Diverged sync hash as P1 → sends syncFix + completes", () => {
   fireRemoteSyncHash(net, badHash);
 
   // P1 is authoritative: should send syncFix
-  const syncFixAction = net.sentActions.find(a => a.type === "syncFix");
+  const syncFixAction = net.sentActions.find((a) => a.type === "syncFix");
   assert(syncFixAction !== undefined, "syncFix action sent");
   assertEqual(syncFixAction!.type, "syncFix", "action is syncFix");
 
@@ -426,9 +510,13 @@ test("Diverged sync hash as P2 → waits for syncFix, does NOT send one", () => 
   fireRemoteSyncHash(net, badHash);
 
   // P2 is NOT authoritative: should NOT send syncFix, should NOT complete yet
-  const syncFixAction = net.sentActions.find(a => a.type === "syncFix");
+  const syncFixAction = net.sentActions.find((a) => a.type === "syncFix");
   assert(syncFixAction === undefined, "no syncFix sent by P2");
-  assertEqual(log.startSimulation, 1, "simulation not started yet (waiting for syncFix)");
+  assertEqual(
+    log.startSimulation,
+    1,
+    "simulation not started yet (waiting for syncFix)",
+  );
 });
 
 test("P2 receives syncFix → applies it and completes", () => {
@@ -486,7 +574,11 @@ test("SyncHash arrives before phaseReady → waits, completes when phaseReady ar
   // SyncHash arrives BEFORE phaseReady
   const matchingHash = buildMatchingSyncHash(game);
   fireRemoteSyncHash(net, matchingHash);
-  assertEqual(log.startSimulation, 1, "simulation not started yet (no phaseReady)");
+  assertEqual(
+    log.startSimulation,
+    1,
+    "simulation not started yet (no phaseReady)",
+  );
 
   // PhaseReady arrives
   fireRemotePhaseReady(net, 3);
@@ -520,7 +612,11 @@ test("Remote selectPattern → delegates to executeSelectPattern", () => {
 
   fireRemoteAction(net, { type: "selectPattern", player: 2, patternIndex: 5 });
 
-  assertEqual(log.executeSelectPattern.length, 1, "executeSelectPattern called");
+  assertEqual(
+    log.executeSelectPattern.length,
+    1,
+    "executeSelectPattern called",
+  );
   assertEqual(log.executeSelectPattern[0]!.player, 2, "player");
   assertEqual(log.executeSelectPattern[0]!.patternIndex, 5, "patternIndex");
 });
@@ -537,7 +633,11 @@ test("Remote done in placement phase → delegates to handleTurnAction", () => {
 
   // Game is in placement phase (default) — done should go to handleTurnAction
   fireRemoteAction(net, { type: "done", player: 2 });
-  assertEqual(log.handleTurnAction, 1, "handleTurnAction called (not tactical done)");
+  assertEqual(
+    log.handleTurnAction,
+    1,
+    "handleTurnAction called (not tactical done)",
+  );
 });
 
 test("Remote done in tactical phase → triggers tactical done", () => {
@@ -611,7 +711,11 @@ test("Remote tacticalPlace at current gen → executePlace + add to queue, no ro
   });
 
   assertEqual(log.executePlace.length, 1, "executePlace called");
-  assertEqual(log.refreshDisplay, 0, "no refreshDisplay (current gen, no rollback needed)");
+  assertEqual(
+    log.refreshDisplay,
+    0,
+    "no refreshDisplay (current gen, no rollback needed)",
+  );
 });
 
 test("Remote tacticalPlace at past gen → executePlace + rollback + refreshDisplay", () => {
@@ -664,12 +768,18 @@ test("addLocalTacticalAction sends tacticalPlace and adds to rollback queue", ()
   });
 
   // Should have sent tacticalPlace (done action not sent yet)
-  const tacticalAction = net.sentActions.find(a => a.type === "tacticalPlace");
+  const tacticalAction = net.sentActions.find(
+    (a) => a.type === "tacticalPlace",
+  );
   assert(tacticalAction !== undefined, "tacticalPlace action sent");
 
   // Should be in rollback queue
   assert(sync.rollback !== null, "rollback exists");
-  assertEqual(sync.rollback!.getActionsForGeneration(0).length, 1, "action in queue");
+  assertEqual(
+    sync.rollback!.getActionsForGeneration(0).length,
+    1,
+    "action in queue",
+  );
 });
 
 // ── Reset ──────────────────────────────────────────────────────────
@@ -744,14 +854,16 @@ test("P2 local tactical done sends action with player=2", () => {
   game.setPhase("tactical");
 
   sync.onLocalTacticalDone();
-  const doneAction = net.sentActions.find(a => a.type === "done");
+  const doneAction = net.sentActions.find((a) => a.type === "done");
   assert(doneAction !== undefined, "done action sent");
   assertEqual((doneAction as any).player, 2, "done action has player=2");
 });
 
 // ─── Summary ───────────────────────────────────────────────────────
 
-console.log(`\n${passed + failed} tests: \x1b[32m${passed} passed\x1b[0m, ${failed > 0 ? `\x1b[31m${failed} failed\x1b[0m` : `${failed} failed`}\n`);
+console.log(
+  `\n${passed + failed} tests: \x1b[32m${passed} passed\x1b[0m, ${failed > 0 ? `\x1b[31m${failed} failed\x1b[0m` : `${failed} failed`}\n`,
+);
 
 if (failures.length > 0) {
   console.log("\x1b[31mFailures:\x1b[0m");

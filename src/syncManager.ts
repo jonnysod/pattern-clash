@@ -19,15 +19,20 @@ export interface SyncCallbacks {
   beginTacticalPhaseAfterSync(): void;
 
   // Remote action execution (delegated to UIController)
-  executePlace(player: Player, patternIndex: number, row: number, col: number): boolean;
+  executePlace(
+    player: Player,
+    patternIndex: number,
+    row: number,
+    col: number,
+  ): boolean;
   executeSelectPattern(player: Player, patternIndex: number): void;
   executeSurrender(player: Player): void;
   handleTurnAction(): void;
   markPlayerDone(player: Player): void;
 
   // State management
-  enterSimulationPhase(): void;   // setPhase("simulation") + disable controls + hide timer
-  stopAnimationAndClock(): void;  // stop animation loop + stop chess clock
+  enterSimulationPhase(): void; // setPhase("simulation") + disable controls + hide timer
+  stopAnimationAndClock(): void; // stop animation loop + stop chess clock
 
   // Display refresh (points + generation + pattern buttons + grid redraw)
   refreshDisplay(): void;
@@ -76,7 +81,8 @@ export class SyncManager {
 
     // Wire network callbacks
     network.onRemoteAction = (action) => this.handleRemoteAction(action);
-    network.onRemotePhaseReady = (counter) => this.handleRemotePhaseReady(counter);
+    network.onRemotePhaseReady = (counter) =>
+      this.handleRemotePhaseReady(counter);
     network.onRemoteSyncHash = (hash) => this.handleRemoteSyncHash(hash);
   }
 
@@ -97,7 +103,9 @@ export class SyncManager {
   onLocalTacticalDone(): void {
     if (this.localTacticalDone) return;
     this.localTacticalDone = true;
-    console.log(`[TacticalDone] Local player done at gen=${this.game.currentGeneration}`);
+    console.log(
+      `[TacticalDone] Local player done at gen=${this.game.currentGeneration}`,
+    );
 
     this.network.sendAction({ type: "done", player: this.localPlayer });
     this.cb.markPlayerDone(this.localPlayer);
@@ -348,6 +356,8 @@ export class SyncManager {
   private completeTacticalSync(): void {
     this.remoteSyncHash = null;
     this.phaseReadyTarget = null;
+    this.localTacticalDone = false;
+    this.remoteTacticalDone = false;
     this.cb.hideWaitingOverlay();
 
     if (this.rollback) {
