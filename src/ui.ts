@@ -679,10 +679,8 @@ export class UIController {
 
     this.turns.updateButtonText();
 
-    this.dom.surrender1Btn.disabled = false;
-    this.dom.surrender1Btn.style.opacity = "1";
-    this.dom.surrender2Btn.disabled = false;
-    this.dom.surrender2Btn.style.opacity = "1";
+    this.dom.surrender1Btn.style.visibility = "visible";
+    this.dom.surrender2Btn.style.visibility = "visible";
   }
 
   private updatePointsDisplay(): void {

@@ -47,8 +47,8 @@ export function createDOMRefs() {
     ready2Btn: getElement<HTMLButtonElement>("ready2Btn"),
 
     // Surrender buttons
-    surrender1Btn: getElement<HTMLButtonElement>("surrender1Btn"),
-    surrender2Btn: getElement<HTMLButtonElement>("surrender2Btn"),
+    surrender1Btn: getElement<HTMLSpanElement>("surrender1Btn"),
+    surrender2Btn: getElement<HTMLSpanElement>("surrender2Btn"),
 
     // Pattern buttons
     player1Patterns: getElements(".player1-pattern"),
