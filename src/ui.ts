@@ -38,6 +38,7 @@ export class UIController {
 
   //#region Waiting Overlay
   private waitingOverlay: HTMLDivElement | null = null;
+  private waitingOverlayTimerId: number | null = null;
   //#endregion
 
   constructor(
@@ -148,10 +149,19 @@ export class UIController {
   }
 
   private showWaitingOverlay(): void {
-    if (this.waitingOverlay) this.waitingOverlay.style.display = "flex";
+    if (!this.waitingOverlay) return;
+    if (this.waitingOverlayTimerId !== null) return; // already pending
+    this.waitingOverlayTimerId = window.setTimeout(() => {
+      this.waitingOverlayTimerId = null;
+      if (this.waitingOverlay) this.waitingOverlay.style.display = "flex";
+    }, 1000);
   }
 
   private hideWaitingOverlay(): void {
+    if (this.waitingOverlayTimerId !== null) {
+      clearTimeout(this.waitingOverlayTimerId);
+      this.waitingOverlayTimerId = null;
+    }
     if (this.waitingOverlay) this.waitingOverlay.style.display = "none";
   }
   //#endregion
