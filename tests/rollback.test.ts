@@ -52,7 +52,7 @@ function createGame(): Game {
 // Place a Glider — moves across the board, different grid every generation
 function placeGlider(game: Game): void {
   const glider = PATTERNS[8]!; // "Glider down": 5 cells, moves diagonally
-  game.placePattern(10, 10, glider, 1, true);
+  game.placePattern(10, 10, glider, 1);
 }
 
 // Apply a placement the same way RollbackManager does (with P2 offset)
@@ -64,7 +64,7 @@ function applyLikeRollback(game: Game, action: ActionGen): void {
     const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
     placementCol = action.col - maxC;
   }
-  game.placePattern(action.row, placementCol, playerPattern, action.player, true);
+  game.placePattern(action.row, placementCol, playerPattern, action.player);
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────

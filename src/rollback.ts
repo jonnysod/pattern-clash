@@ -87,7 +87,6 @@ export class RollbackManager {
       placementCol,
       playerPattern,
       action.player,
-      true, // skipZoneCheck
     );
   }
 
@@ -143,7 +142,13 @@ export class RollbackManager {
   actionQueueHash(): number {
     let hash = 0;
     for (const a of this.actionQueue) {
-      hash = (hash * 31 + a.generation * 1000 + a.patternIndex * 100 + a.row * 10 + a.col) | 0;
+      hash =
+        (hash * 31 +
+          a.generation * 1000 +
+          a.patternIndex * 100 +
+          a.row * 10 +
+          a.col) |
+        0;
       hash = (hash * 7 + a.player) | 0;
     }
     return hash;
@@ -155,7 +160,13 @@ export class RollbackManager {
   }
 
   // Parse a sync hash string
-  static parseSyncHash(hash: string): { generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number } {
+  static parseSyncHash(hash: string): {
+    generation: number;
+    gridHash: number;
+    pointsPlayer1: number;
+    pointsPlayer2: number;
+    actionHash: number;
+  } {
     const parts = hash.split("|");
     return {
       generation: parseInt(parts[0]!),
@@ -172,13 +183,16 @@ export class RollbackManager {
     lines.push(`[SyncCheck] Phase: ${phase}`);
     lines.push(
       `  gen=${this.game.currentGeneration} gridHash=${this.game.gridHash()} ` +
-      `points=${this.game.pointsPlayer1}/${this.game.pointsPlayer2} ` +
-      `actionGens=${this.actionQueue.length} actionHash=${this.actionQueueHash()} ` +
-      `player=P${localPlayer}`,
+        `points=${this.game.pointsPlayer1}/${this.game.pointsPlayer2} ` +
+        `actionGens=${this.actionQueue.length} actionHash=${this.actionQueueHash()} ` +
+        `player=P${localPlayer}`,
     );
     if (this.actionQueue.length > 0) {
       const summary = this.actionQueue
-        .map((a) => `P${a.player}@gen${a.generation}:pat${a.patternIndex}(${a.row},${a.col})`)
+        .map(
+          (a) =>
+            `P${a.player}@gen${a.generation}:pat${a.patternIndex}(${a.row},${a.col})`,
+        )
         .join(" ");
       lines.push(`  actions: ${summary}`);
     }
@@ -191,7 +205,11 @@ export class RollbackManager {
   }
 
   // Deserialize grid from flat string
-  static deserializeGrid(data: string, rows: number, cols: number): boolean[][] {
+  static deserializeGrid(
+    data: string,
+    rows: number,
+    cols: number,
+  ): boolean[][] {
     const grid: boolean[][] = [];
     for (let r = 0; r < rows; r++) {
       const row: boolean[] = [];

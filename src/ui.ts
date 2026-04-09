@@ -277,7 +277,6 @@ export class UIController {
       placementCol,
       playerPattern,
       player,
-      true,
     );
 
     if (success) {

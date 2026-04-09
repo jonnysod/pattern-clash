@@ -187,9 +187,8 @@ export class Game {
     startCol: number,
     pattern: Pattern,
     player: Player,
-    skipZoneCheck: boolean = false,
   ): boolean {
-    if (!skipZoneCheck && !this.zones.isValidPlacement(startCol, player)) {
+    if (!this.zones.isValidPlacement(startCol, player)) {
       return false;
     }
 
