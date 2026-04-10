@@ -9,7 +9,7 @@ import type { DOMRefs } from "./domRefs.js";
 import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer } from "./patternUtils.js";
+import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { TurnManager } from "./turnManager.js";
 import { ScoreEffects } from "./scoreEffects.js";
 import { Network, type GameAction } from "./network.js";
@@ -267,12 +267,7 @@ export class UIController {
     if (!pattern) return false;
 
     const playerPattern = getPatternForPlayer(pattern, player);
-
-    let placementCol = col;
-    if (player === 2) {
-      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-      placementCol = col - maxC;
-    }
+    const placementCol = getPlacementCol(col, playerPattern, player);
 
     if (this.network) {
       const source = this.isLocalPlayer(player) ? "LOCAL" : "REMOTE";

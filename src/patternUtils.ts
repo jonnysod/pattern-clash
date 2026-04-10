@@ -32,10 +32,19 @@ export function rotatePattern(pattern: Pattern): Pattern {
 // Get pattern transformed for a specific player.
 // Player 1: original (patterns face right by default).
 // Player 2: horizontally mirrored (patterns face left).
-export function getPatternForPlayer(
-  pattern: Pattern,
-  player: Player,
-): Pattern {
+export function getPatternForPlayer(pattern: Pattern, player: Player): Pattern {
   if (player === 1) return pattern;
   return mirrorPatternHorizontal(pattern);
+}
+
+// Compute the actual column for placement.
+// Player 2 patterns are offset so they're placed left of the cursor column.
+export function getPlacementCol(
+  col: number,
+  pattern: Pattern,
+  player: Player,
+): number {
+  if (player === 1) return col;
+  const maxC = Math.max(...pattern.cells.map(([, c]) => c));
+  return col - maxC;
 }

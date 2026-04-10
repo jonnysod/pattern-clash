@@ -8,7 +8,7 @@
 import type { Player } from "./types.js";
 import { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer } from "./patternUtils.js";
+import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 
 // A placement tagged with the generation it was made at
 export interface ActionGen {
@@ -74,13 +74,7 @@ export class RollbackManager {
     if (!pattern) return false;
 
     const playerPattern = getPatternForPlayer(pattern, action.player);
-
-    // P2: offset so pattern is placed left of cursor column
-    let placementCol = action.col;
-    if (action.player === 2) {
-      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-      placementCol = action.col - maxC;
-    }
+    const placementCol = getPlacementCol(action.col, playerPattern, action.player);
 
     return this.game.placePattern(
       action.row,
