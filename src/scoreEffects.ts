@@ -47,19 +47,29 @@ export class ScoreEffects {
 
   // Feed score events from a generation
   feed(events: ScoreEvent[]): void {
+    // Aggregate points per region within this frame
+    const frameRegions = new Map<
+      string,
+      { event: ScoreEvent; total: number }
+    >();
+
     for (const event of events) {
       const regionKey = this.getRegionKey(event.row, event.col, event.scorer);
-      const existing = this.activeEffects.get(regionKey);
-
-      if (existing) {
-        // Aggregate: increase points, restart animation
-        existing.totalPoints += event.points;
-        existing.element.textContent = `+${existing.totalPoints}`;
-        this.restartAnimation(existing);
+      const entry = frameRegions.get(regionKey);
+      if (entry) {
+        entry.total += event.points;
       } else {
-        // Create new floating text
-        this.createEffect(event, regionKey);
+        frameRegions.set(regionKey, { event, total: event.points });
       }
+    }
+
+    for (const [regionKey, { event, total }] of frameRegions) {
+      const existing = this.activeEffects.get(regionKey);
+      if (existing) {
+        // Previous animation still running — let it finish, skip this frame
+        continue;
+      }
+      this.createEffect({ ...event, points: total }, regionKey);
     }
   }
 
@@ -112,32 +122,6 @@ export class ScoreEffects {
       regionKey,
       timeoutId,
     });
-  }
-
-  private restartAnimation(effect: ActiveEffect): void {
-    // Clear old timeout
-    clearTimeout(effect.timeoutId);
-
-    const el = effect.element;
-    const color =
-      effect.scorer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
-
-    // Reset position and opacity instantly
-    el.style.transition = "none";
-    el.style.transform = "translateY(0px)";
-    el.style.opacity = "1";
-    el.style.color = color;
-
-    // Re-trigger float animation on next frame
-    requestAnimationFrame(() => {
-      el.style.transition = `transform ${FLOAT_DURATION}ms ease-out, opacity ${FLOAT_DURATION}ms ease-in`;
-      el.style.transform = `translateY(-${FLOAT_DISTANCE}px)`;
-      el.style.opacity = "0";
-    });
-
-    effect.timeoutId = window.setTimeout(() => {
-      this.removeEffect(effect.regionKey);
-    }, FLOAT_DURATION);
   }
 
   private removeEffect(regionKey: string): void {
