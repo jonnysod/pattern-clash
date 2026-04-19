@@ -6,6 +6,7 @@ import { UIController } from "./ui.js";
 import { createDOMRefs } from "./domRefs.js";
 import { Network } from "./network.js";
 import { CONFIG } from "./config.js";
+import { logInfo } from "./logger.js";
 
 //#region Initialization
 const dom = createDOMRefs();
@@ -157,4 +158,4 @@ dom.lobbyBackBtn3.addEventListener("click", () => {
 });
 //#endregion
 
-console.log("Pattern Clash - Ready!");
+logInfo("[Game] Pattern Clash ready");

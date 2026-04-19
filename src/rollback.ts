@@ -8,7 +8,8 @@
 import type { Player } from "./types.js";
 import { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
+import { getPatternForPlayer } from "./patternUtils.js";
+import { logWarn } from "./logger.js";
 
 // A placement tagged with the generation it was made at
 export interface ActionGen {
@@ -45,10 +46,6 @@ export class RollbackManager {
       generation: this.game.currentGeneration,
     };
     this.actionQueue = [];
-
-    console.log(
-      `[Rollback] Snapshot taken at gen=${this.snapshot.generation} hash=${this.game.gridHash()}`,
-    );
   }
 
   // Record a placement (local or remote) into the queue
@@ -74,7 +71,13 @@ export class RollbackManager {
     if (!pattern) return false;
 
     const playerPattern = getPatternForPlayer(pattern, action.player);
-    const placementCol = getPlacementCol(action.col, playerPattern, action.player);
+
+    // P2: offset so pattern is placed left of cursor column
+    let placementCol = action.col;
+    if (action.player === 2) {
+      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
+      placementCol = action.col - maxC;
+    }
 
     return this.game.placePattern(
       action.row,
@@ -88,15 +91,11 @@ export class RollbackManager {
   // Returns true if rollback was performed successfully.
   rollback(): boolean {
     if (!this.snapshot) {
-      console.warn("[Rollback] No snapshot available, cannot rollback");
+      logWarn("[Rollback] No snapshot available, cannot rollback");
       return false;
     }
 
     const targetGeneration = this.game.currentGeneration;
-
-    console.log(
-      `[Rollback] Rolling back from gen=${targetGeneration} to snapshot gen=${this.snapshot.generation}, replaying ${this.actionQueue.length} actions`,
-    );
 
     // Step 1: Restore grid and points from snapshot
     this.game.grid = this.deepCopyGrid(this.snapshot.grid);
@@ -125,10 +124,6 @@ export class RollbackManager {
       this.applyPlacement(action);
     }
 
-    console.log(
-      `[Rollback] Resimulated to gen=${this.game.currentGeneration} hash=${this.game.gridHash()} p1=${this.game.pointsPlayer1} p2=${this.game.pointsPlayer2}`,
-    );
-
     return true;
   }
 
@@ -136,13 +131,7 @@ export class RollbackManager {
   actionQueueHash(): number {
     let hash = 0;
     for (const a of this.actionQueue) {
-      hash =
-        (hash * 31 +
-          a.generation * 1000 +
-          a.patternIndex * 100 +
-          a.row * 10 +
-          a.col) |
-        0;
+      hash = (hash * 31 + a.generation * 1000 + a.patternIndex * 100 + a.row * 10 + a.col) | 0;
       hash = (hash * 7 + a.player) | 0;
     }
     return hash;
@@ -154,13 +143,7 @@ export class RollbackManager {
   }
 
   // Parse a sync hash string
-  static parseSyncHash(hash: string): {
-    generation: number;
-    gridHash: number;
-    pointsPlayer1: number;
-    pointsPlayer2: number;
-    actionHash: number;
-  } {
+  static parseSyncHash(hash: string): { generation: number; gridHash: number; pointsPlayer1: number; pointsPlayer2: number; actionHash: number } {
     const parts = hash.split("|");
     return {
       generation: parseInt(parts[0]!),
@@ -171,39 +154,13 @@ export class RollbackManager {
     };
   }
 
-  // Format a sync status log for the current state
-  formatSyncLog(phase: string, localPlayer: Player): string {
-    const lines: string[] = [];
-    lines.push(`[SyncCheck] Phase: ${phase}`);
-    lines.push(
-      `  gen=${this.game.currentGeneration} gridHash=${this.game.gridHash()} ` +
-        `points=${this.game.pointsPlayer1}/${this.game.pointsPlayer2} ` +
-        `actionGens=${this.actionQueue.length} actionHash=${this.actionQueueHash()} ` +
-        `player=P${localPlayer}`,
-    );
-    if (this.actionQueue.length > 0) {
-      const summary = this.actionQueue
-        .map(
-          (a) =>
-            `P${a.player}@gen${a.generation}:pat${a.patternIndex}(${a.row},${a.col})`,
-        )
-        .join(" ");
-      lines.push(`  actions: ${summary}`);
-    }
-    return lines.join("\n");
-  }
-
   // Serialize grid as flat string for Firestore (no nested arrays)
   static serializeGrid(grid: boolean[][]): string {
     return grid.map((row) => row.map((c) => (c ? "1" : "0")).join("")).join("");
   }
 
   // Deserialize grid from flat string
-  static deserializeGrid(
-    data: string,
-    rows: number,
-    cols: number,
-  ): boolean[][] {
+  static deserializeGrid(data: string, rows: number, cols: number): boolean[][] {
     const grid: boolean[][] = [];
     for (let r = 0; r < rows; r++) {
       const row: boolean[] = [];

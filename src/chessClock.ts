@@ -74,7 +74,6 @@ export class ChessClock {
   }
 
   switchTo(player: Player): void {
-    console.log("[ChessClock] switchTo", player, "p1expired:", this.player1Expired, "p2expired:", this.player2Expired);
     this.activePlayer = player;
     this.fireTick();
   }

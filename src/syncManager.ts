@@ -11,6 +11,7 @@ import type { Player } from "./types.js";
 import type { Game } from "./game.js";
 import type { Network, GameAction } from "./network.js";
 import { RollbackManager, type ActionGen } from "./rollback.js";
+import { logInfo, logDebug, logWarn } from "./logger.js";
 
 /** Callbacks from SyncManager back to UIController */
 export interface SyncCallbacks {
@@ -19,22 +20,17 @@ export interface SyncCallbacks {
   beginTacticalPhaseAfterSync(): void;
 
   // Remote action execution (delegated to UIController)
-  executePlace(
-    player: Player,
-    patternIndex: number,
-    row: number,
-    col: number,
-  ): boolean;
+  executePlace(player: Player, patternIndex: number, row: number, col: number): boolean;
   executeSelectPattern(player: Player, patternIndex: number): void;
   executeSurrender(player: Player): void;
   handleTurnAction(): void;
   markPlayerDone(player: Player): void;
 
   // State management
-  enterSimulationPhase(): void; // setPhase("simulation") + disable controls + hide timer
-  stopAnimationAndClock(): void; // stop animation loop + stop chess clock
+  enterSimulationPhase(): void;
+  stopAnimationAndClock(): void;
 
-  // Display refresh (points + generation + pattern buttons + grid redraw)
+  // Display refresh
   refreshDisplay(): void;
 
   // Waiting overlay
@@ -81,8 +77,7 @@ export class SyncManager {
 
     // Wire network callbacks
     network.onRemoteAction = (action) => this.handleRemoteAction(action);
-    network.onRemotePhaseReady = (counter) =>
-      this.handleRemotePhaseReady(counter);
+    network.onRemotePhaseReady = (counter) => this.handleRemotePhaseReady(counter);
     network.onRemoteSyncHash = (hash) => this.handleRemoteSyncHash(hash);
   }
 
@@ -103,9 +98,6 @@ export class SyncManager {
   onLocalTacticalDone(): void {
     if (this.localTacticalDone) return;
     this.localTacticalDone = true;
-    console.log(
-      `[TacticalDone] Local player done at gen=${this.game.currentGeneration}`,
-    );
 
     this.network.sendAction({ type: "done", player: this.localPlayer });
     this.cb.markPlayerDone(this.localPlayer);
@@ -154,32 +146,19 @@ export class SyncManager {
     this.phaseReadyTarget = target;
     this.network.sendPhaseReady();
 
-    console.log(
-      `[PhaseReady] Sent phase ready #${this.localPhaseReadyCount} (target=${target}), awaiting remote`,
-    );
-
     if (this.remotePhaseReadyCount >= this.localPhaseReadyCount) {
-      console.log(
-        `[PhaseReady] Remote already at #${this.remotePhaseReadyCount}, proceeding`,
-      );
       this.awaitingRemotePhaseReady = false;
       this.onPhaseReadyComplete(target);
     }
   }
 
   private handleRemotePhaseReady(counter: number): void {
-    console.log(
-      `[PhaseReady] Remote phase ready #${counter}, local at #${this.localPhaseReadyCount}`,
-    );
     this.remotePhaseReadyCount = counter;
 
     if (
       this.awaitingRemotePhaseReady &&
       this.remotePhaseReadyCount >= this.localPhaseReadyCount
     ) {
-      console.log(
-        `[PhaseReady] Both ready, proceeding (target=${this.phaseReadyTarget})`,
-      );
       this.awaitingRemotePhaseReady = false;
       const target = this.phaseReadyTarget!;
       this.phaseReadyTarget = null;
@@ -195,6 +174,7 @@ export class SyncManager {
   }
 
   private onPhaseReadyComplete(target: "simulation" | "tactical"): void {
+    logDebug(`[Sync] PhaseReady handshake complete (target=${target})`);
     if (target === "simulation") {
       this.cb.startSimulation();
     } else {
@@ -222,7 +202,6 @@ export class SyncManager {
   private handleRemoteTacticalDone(): void {
     if (this.remoteTacticalDone) return;
     this.remoteTacticalDone = true;
-    console.log(`[TacticalDone] Remote player done`);
 
     const remotePlayer: Player = this.localPlayer === 1 ? 2 : 1;
     this.cb.markPlayerDone(remotePlayer);
@@ -230,31 +209,18 @@ export class SyncManager {
   }
 
   private checkTacticalBothDone(): void {
-    if (!this.localTacticalDone || !this.remoteTacticalDone) {
-      console.log(
-        `[TacticalDone] Waiting — local=${this.localTacticalDone} remote=${this.remoteTacticalDone}`,
-      );
-      return;
-    }
+    if (!this.localTacticalDone || !this.remoteTacticalDone) return;
 
-    console.log(`[TacticalDone] Both done — stopping animation, starting sync`);
+    logDebug(`[Sync] TacticalDone: both done at gen=${this.game.currentGeneration}`);
 
     this.cb.stopAnimationAndClock();
     this.cb.enterSimulationPhase();
     this.cb.showWaitingOverlay();
 
-    if (this.rollback) {
-      console.log(
-        this.rollback.formatSyncLog("tactical→simulation", this.localPlayer),
-      );
-    }
-
     // Send phaseReady WITH sync hash — both in one Firestore write, no race condition
     const syncHash = this.rollback
       ? this.rollback.buildSyncHash(this.game)
       : `${this.game.currentGeneration}|${this.game.gridHash()}|${this.game.pointsPlayer1}|${this.game.pointsPlayer2}|0`;
-
-    console.log(`[SyncCheck] Sending phaseReady with syncHash: ${syncHash}`);
 
     this.localPhaseReadyCount++;
     this.awaitingRemotePhaseReady = true;
@@ -270,7 +236,6 @@ export class SyncManager {
   //#region Sync Hash Comparison
 
   private handleRemoteSyncHash(hash: string): void {
-    console.log(`[SyncCheck] Received remote syncHash: ${hash}`);
     this.remoteSyncHash = hash;
     this.tryCompleteTacticalSync();
   }
@@ -294,22 +259,19 @@ export class SyncManager {
     const pointsMatch =
       local.pointsPlayer1 === remote.pointsPlayer1 &&
       local.pointsPlayer2 === remote.pointsPlayer2;
-    const actionMatch = local.actionHash === remote.actionHash;
 
     if (genMatch && hashMatch && pointsMatch) {
-      console.log(
-        `[SyncCheck] ✓ IN SYNC — gen=${local.generation} hash=${local.gridHash} actionMatch=${actionMatch}`,
-      );
+      logDebug(`[Sync] SyncCheck ✓ gen=${local.generation}`);
       this.completeTacticalSync();
     } else {
-      console.warn(
-        `[SyncCheck] ✗ DIVERGED at tactical end\n` +
-          `  Local:  gen=${local.generation} hash=${local.gridHash} p=${local.pointsPlayer1}/${local.pointsPlayer2} aHash=${local.actionHash}\n` +
-          `  Remote: gen=${remote.generation} hash=${remote.gridHash} p=${remote.pointsPlayer1}/${remote.pointsPlayer2} aHash=${remote.actionHash}`,
+      logWarn(
+        `[Sync] SyncCheck ✗ DIVERGED\n` +
+          `  Local:  gen=${local.generation} hash=${local.gridHash} p=${local.pointsPlayer1}/${local.pointsPlayer2}\n` +
+          `  Remote: gen=${remote.generation} hash=${remote.gridHash} p=${remote.pointsPlayer1}/${remote.pointsPlayer2}`,
       );
 
       if (this.localPlayer === 1) {
-        console.log(`[SyncCheck] P1 authoritative — sending grid fix`);
+        logInfo(`[Sync] P1 sending syncFix at gen=${local.generation}`);
         this.network.sendAction({
           type: "syncFix",
           gridData: RollbackManager.serializeGrid(this.game.grid),
@@ -333,9 +295,7 @@ export class SyncManager {
     pointsPlayer2: number;
     generation: number;
   }): void {
-    console.log(
-      `[SyncCheck] Applying sync fix from P1: gen=${data.generation} p1=${data.pointsPlayer1} p2=${data.pointsPlayer2}`,
-    );
+    logInfo(`[Sync] syncFix applied: gen=${data.generation} p1=${data.pointsPlayer1} p2=${data.pointsPlayer2}`);
 
     this.game.grid = RollbackManager.deserializeGrid(
       data.gridData,
@@ -347,9 +307,6 @@ export class SyncManager {
     this.game.currentGeneration = data.generation;
 
     this.cb.refreshDisplay();
-
-    console.log(`[SyncCheck] Fix applied, new hash=${this.game.gridHash()}`);
-
     this.completeTacticalSync();
   }
 
@@ -373,14 +330,6 @@ export class SyncManager {
   //#region Remote Action Dispatching
 
   private handleRemoteAction(action: GameAction): void {
-    console.log(
-      "[Remote]",
-      action.type,
-      "player" in action
-        ? `P${"player" in action ? (action as any).player : ""}`
-        : "",
-    );
-
     switch (action.type) {
       case "placePattern":
         this.cb.executePlace(
@@ -457,8 +406,8 @@ export class SyncManager {
 
     // Past generation: need rollback to correct the timeline
     if (action.generation < this.game.currentGeneration) {
-      console.log(
-        `[Rollback] Remote placement at past gen=${action.generation}, current=${this.game.currentGeneration}, rolling back`,
+      logDebug(
+        `[Sync] Rollback: remote placement at gen=${action.generation}, current=${this.game.currentGeneration}`,
       );
       this.rollback.rollback();
       this.cb.refreshDisplay();

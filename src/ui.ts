@@ -9,12 +9,13 @@ import type { DOMRefs } from "./domRefs.js";
 import { Game } from "./game.js";
 import { Renderer, PreviewRenderer } from "./rendering.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
+import { getPatternForPlayer } from "./patternUtils.js";
 import { TurnManager } from "./turnManager.js";
 import { ScoreEffects } from "./scoreEffects.js";
 import { Network, type GameAction } from "./network.js";
 import { SyncManager } from "./syncManager.js";
 import { CONFIG } from "./config.js";
+import { logInfo, logDebug } from "./logger.js";
 
 export class UIController {
   private game: Game;
@@ -150,7 +151,7 @@ export class UIController {
 
   private showWaitingOverlay(): void {
     if (!this.waitingOverlay) return;
-    if (this.waitingOverlayTimerId !== null) return; // already pending
+    if (this.waitingOverlayTimerId !== null) return;
     this.waitingOverlayTimerId = window.setTimeout(() => {
       this.waitingOverlayTimerId = null;
       if (this.waitingOverlay) this.waitingOverlay.style.display = "flex";
@@ -267,14 +268,11 @@ export class UIController {
     if (!pattern) return false;
 
     const playerPattern = getPatternForPlayer(pattern, player);
-    const placementCol = getPlacementCol(col, playerPattern, player);
 
-    if (this.network) {
-      const source = this.isLocalPlayer(player) ? "LOCAL" : "REMOTE";
-      const hashBefore = this.game.gridHash();
-      console.log(
-        `[Sync] ${source} place P${player} pattern=${patternIndex} row=${row} col=${placementCol} gen=${this.game.currentGeneration} hashBefore=${hashBefore}`,
-      );
+    let placementCol = col;
+    if (player === 2) {
+      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
+      placementCol = col - maxC;
     }
 
     const success = this.game.placePattern(
@@ -461,6 +459,7 @@ export class UIController {
   // ── Placement Phase ──────────────────────────────────────────────
 
   private startPlacementPhase(): void {
+    logInfo(`[Game] Phase: placement (gen=${this.game.currentGeneration})`);
     this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
     this.turns.startClock(CONFIG.CHESS_CLOCK_PLACEMENT_SEC);
     this.updateActivePlayerUI();
@@ -472,9 +471,6 @@ export class UIController {
     this.dom.turnTimerContainer.style.visibility = "hidden";
 
     if (this.syncManager) {
-      console.log(
-        `[Sync] Placement phase ended, gen=${this.game.currentGeneration} hash=${this.game.gridHash()} p1=${this.game.pointsPlayer1} p2=${this.game.pointsPlayer2}`,
-      );
       this.syncManager.onPlacementDone();
       return;
     }
@@ -486,13 +482,7 @@ export class UIController {
 
   private startSimulation(): void {
     this.stopAnimation();
-
-    if (this.network) {
-      console.log(
-        `[Sync] Simulation starting, gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`,
-      );
-    }
-
+    logInfo(`[Game] Phase: simulation (gen=${this.game.currentGeneration})`);
     this.animateSimulation();
   }
 
@@ -503,9 +493,6 @@ export class UIController {
     this.game.setPhase("tactical");
 
     if (this.syncManager) {
-      console.log(
-        `[Sync] Tactical phase triggered at gen=${this.game.currentGeneration} hash=${this.game.gridHash()}`,
-      );
       this.syncManager.onTacticalStart();
       return;
     }
@@ -514,6 +501,8 @@ export class UIController {
   }
 
   private beginTacticalPhaseAfterSync(): void {
+    logInfo(`[Game] Phase: tactical (gen=${this.game.currentGeneration})`);
+
     // Wire onPhaseEnd for tactical phase
     if (this.syncManager) {
       this.turns.onPhaseEnd = () => {
@@ -580,7 +569,15 @@ export class UIController {
     }
 
     if (this.game.isSimulation) {
+      // Bug 3 debug: phase changed to simulation while tick was in flight
+      logDebug(`[Game] animateTactical aborted: phase is simulation (gen=${this.game.currentGeneration})`);
       this.stopAnimation();
+      return;
+    }
+
+    if (this.animationId === null) {
+      // stopAnimation() was called but this tick was already dispatched
+      logDebug(`[Game] animateTactical aborted: animation stopped (gen=${this.game.currentGeneration})`);
       return;
     }
 
@@ -821,6 +818,11 @@ export class UIController {
     }
 
     const result = this.game.getWinner();
+
+    const winnerLabel = result.winner === 1 ? "P1 wins"
+      : result.winner === 2 ? "P2 wins"
+      : "Tie";
+    logInfo(`[Game] Ended: ${winnerLabel} (${result.player1Score}-${result.player2Score})`);
 
     if (result.winner === 1) {
       this.dom.winnerTitle.textContent = "Player 1 Wins!";
