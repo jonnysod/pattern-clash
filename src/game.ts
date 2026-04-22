@@ -219,7 +219,7 @@ export class Game {
     pattern: Pattern,
     player: Player,
   ): boolean {
-    if (!this.zones.isValidPlacement(startCol, player)) {
+    if (!this.zones.isValidPatternPlacement(pattern, startCol, player)) {
       return false;
     }
 
@@ -265,9 +265,7 @@ export class Game {
     if (price <= 0) return false;
     if (this.getBudget(player) < price) return false;
     if (this.getSlotCount(player) >= CONFIG.MAX_SLOTS) return false;
-    if (
-      this.getCopyCount(player, patternIndex) >= CONFIG.MAX_COPIES_PER_TYPE
-    ) {
+    if (this.getCopyCount(player, patternIndex) >= CONFIG.MAX_COPIES_PER_TYPE) {
       return false;
     }
     return true;

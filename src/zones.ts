@@ -1,6 +1,6 @@
 // Zone layout definitions and validation
 
-import type { Player, ZoneRect } from "./types.js";
+import type { Pattern, Player, ZoneRect } from "./types.js";
 import { CONFIG } from "./config.js";
 
 export class Zones {
@@ -58,12 +58,21 @@ export class Zones {
     this.scoreColumnBottomRight = this.rightStart + endzoneWidth;
   }
 
-  // Check if a column is valid for a player to place patterns
-  isValidPlacement(col: number, player: Player): boolean {
+  // Check if the entire pattern fits within the player's zone.
+  // startCol is the column of the cell with col-offset 0.
+  isValidPatternPlacement(
+    pattern: Pattern,
+    startCol: number,
+    player: Player,
+  ): boolean {
+    const minOffset = Math.min(...pattern.cells.map(([, c]) => c));
+    const maxOffset = Math.max(...pattern.cells.map(([, c]) => c));
+    const leftCol = startCol + minOffset;
+    const rightCol = startCol + maxOffset;
     if (player === 1) {
-      return col >= this.endzoneLeftEnd && col < this.leftEnd;
+      return leftCol >= this.endzoneLeftEnd && rightCol < this.leftEnd;
     } else {
-      return col >= this.rightStart && col < this.endzoneRightStart;
+      return leftCol >= this.rightStart && rightCol < this.endzoneRightStart;
     }
   }
 
@@ -113,10 +122,7 @@ export class Zones {
       return true;
     }
     // Bottom L: vertical part
-    if (
-      col === this.scoreColumnBottomLeft &&
-      row > this.scoreRowBottom
-    ) {
+    if (col === this.scoreColumnBottomLeft && row > this.scoreRowBottom) {
       return true;
     }
     return false;
@@ -152,10 +158,7 @@ export class Zones {
       return true;
     }
     // Bottom L: vertical part
-    if (
-      col === this.scoreColumnBottomRight &&
-      row > this.scoreRowBottom
-    ) {
+    if (col === this.scoreColumnBottomRight && row > this.scoreRowBottom) {
       return true;
     }
     return false;

@@ -42,12 +42,7 @@ export class UIController {
   // Restart callback (set by main.ts to return to the start overlay)
   onRestartRequested: (() => void) | null = null;
 
-  constructor(
-    game: Game,
-    dom: DOMRefs,
-    renderer: Renderer,
-    cellSize: number,
-  ) {
+  constructor(game: Game, dom: DOMRefs, renderer: Renderer, cellSize: number) {
     this.game = game;
     this.dom = dom;
     this.renderer = renderer;
@@ -167,8 +162,7 @@ export class UIController {
   private showSwitchOverlay(nextPlayer: Player): void {
     const color =
       nextPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
-    this.dom.switchOverlayTitle.textContent =
-      `Pass the device to Player ${nextPlayer}`;
+    this.dom.switchOverlayTitle.textContent = `Pass the device to Player ${nextPlayer}`;
     this.dom.switchOverlayTitle.style.color = color;
     this.dom.switchOverlay.style.display = "flex";
   }
@@ -269,7 +263,9 @@ export class UIController {
       pattern,
       this.activePlacer,
     );
-    const valid = this.game.zones.isValidPlacement(
+    // Nachher
+    const valid = this.game.zones.isValidPatternPlacement(
+      pattern,
       placementCol,
       this.activePlacer,
     );
@@ -380,8 +376,7 @@ export class UIController {
       `[Game] Simulation of phase ${this.game.currentPhaseNumber} complete. ` +
         `Score: P1=${this.game.scorePlayer1} P2=${this.game.scorePlayer2}`,
     );
-    const wasLastPhase =
-      this.game.currentPhaseNumber >= this.game.totalPhases;
+    const wasLastPhase = this.game.currentPhaseNumber >= this.game.totalPhases;
 
     this.game.advanceAfterSimulation();
 
@@ -417,8 +412,7 @@ export class UIController {
       this.dom.winnerTitle.textContent = "Draw!";
       this.dom.winnerTitle.style.color = "#ffaa00";
     } else {
-      const color =
-        winner === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+      const color = winner === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
       this.dom.winnerTitle.textContent = `Player ${winner} Wins!`;
       this.dom.winnerTitle.style.color = color;
     }
@@ -427,8 +421,7 @@ export class UIController {
       this.game.surrenderedPlayer !== null
         ? ` (Player ${this.game.surrenderedPlayer} surrendered)`
         : "";
-    this.dom.winnerScore.textContent =
-      `Score: ${player1Score} — ${player2Score}${surrenderNote}`;
+    this.dom.winnerScore.textContent = `Score: ${player1Score} — ${player2Score}${surrenderNote}`;
 
     this.dom.winnerOverlay.style.display = "flex";
   }
