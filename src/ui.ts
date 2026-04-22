@@ -1,884 +1,463 @@
-// UI Controller - orchestrates chess clock turns, simulation, and tactical phases
-//
-// Online sync logic (phase-ready handshakes, tactical-done tracking, sync hash
-// comparison, remote action dispatching, rollback lifecycle) is delegated to
-// SyncManager. UIController communicates with SyncManager via SyncCallbacks.
+// UI Controller — orchestrates the full game flow:
+//   buy → place → simulation → (next phase or ended)
 
-import type { Pattern, Player } from "./types.js";
+import type { Player } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
 import { Game } from "./game.js";
-import { Renderer, PreviewRenderer } from "./rendering.js";
-import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer } from "./patternUtils.js";
-import { TurnManager } from "./turnManager.js";
+import { Renderer } from "./rendering.js";
+import { BuyOverlay } from "./buyOverlay.js";
+import { CardHand } from "./cardHand.js";
 import { ScoreEffects } from "./scoreEffects.js";
-import { Network, type GameAction } from "./network.js";
-import { SyncManager } from "./syncManager.js";
+import { PATTERNS } from "./patterns.js";
+import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
-import { logInfo, logDebug } from "./logger.js";
+import { logInfo } from "./logger.js";
 
 export class UIController {
   private game: Game;
   private dom: DOMRefs;
   private renderer: Renderer;
-  private previewRenderer1: PreviewRenderer;
-  private previewRenderer2: PreviewRenderer;
+  private buyOverlay: BuyOverlay;
+  private cardHand: CardHand;
+  private scoreEffects: ScoreEffects;
   private cellSize: number;
 
-  private turns: TurnManager;
-  private scoreEffects: ScoreEffects;
-  private network: Network | null;
-  private syncManager: SyncManager | null = null;
+  // Buy phase: who still needs to buy (hotseat)
+  private pendingBuyers: Player[] = [];
 
-  private selectedPattern1: Pattern | null = null;
-  private selectedPattern2: Pattern | null = null;
-  private animationId: number | null = null;
+  // Place phase
+  private activePlacer: Player = 1;
+  private selectedCardId: string | null = null;
+  private hoverCol: number | null = null;
+  private hoverRow: number | null = null;
 
-  // Which player is this client? In local mode, null (both).
-  private localPlayer: Player | null = null;
+  // Simulation
+  private simTimerId: number | null = null;
 
-  //#region Waiting Overlay
-  private waitingOverlay: HTMLDivElement | null = null;
-  private waitingOverlayTimerId: number | null = null;
-  //#endregion
+  // Event handler references (for removeEventListener)
+  private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private mouseLeaveHandler: (() => void) | null = null;
+  private clickHandler: ((e: MouseEvent) => void) | null = null;
+
+  // Restart callback (set by main.ts to return to the start overlay)
+  onRestartRequested: (() => void) | null = null;
 
   constructor(
     game: Game,
     dom: DOMRefs,
     renderer: Renderer,
-    previewRenderer1: PreviewRenderer,
-    previewRenderer2: PreviewRenderer,
     cellSize: number,
-    network: Network | null = null,
   ) {
     this.game = game;
     this.dom = dom;
     this.renderer = renderer;
-    this.previewRenderer1 = previewRenderer1;
-    this.previewRenderer2 = previewRenderer2;
     this.cellSize = cellSize;
-    this.network = network;
-    this.localPlayer = network?.localPlayer ?? null;
 
-    this.turns = new TurnManager(game, dom);
+    this.buyOverlay = new BuyOverlay(game, dom);
+    this.cardHand = new CardHand(game, dom.cardHand1, dom.cardHand2);
     this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
 
-    // Wire callbacks
-    this.turns.onTurnSwitch = () => this.updateActivePlayerUI();
-    this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
-
-    // Wire online sync
-    if (this.network && this.localPlayer) {
-      this.createWaitingOverlay();
-      this.syncManager = new SyncManager(
-        this.network,
-        this.game,
-        this.localPlayer,
-        {
-          startSimulation: () => this.startSimulation(),
-          beginTacticalPhaseAfterSync: () => this.beginTacticalPhaseAfterSync(),
-          executePlace: (p, pi, r, c) => this.executePlace(p, pi, r, c),
-          executeSelectPattern: (p, pi) => this.executeSelectPattern(p, pi),
-          executeSurrender: (p) => this.executeSurrender(p),
-          handleTurnAction: () => this.turns.onActionButton(),
-          markPlayerDone: (p) => this.turns.markPlayerDone(p),
-          enterSimulationPhase: () => {
-            this.game.setPhase("simulation");
-            this.disableAllControls();
-            this.dom.turnTimerContainer.style.visibility = "hidden";
-          },
-          stopAnimationAndClock: () => {
-            this.stopAnimation();
-            this.turns.stopClock();
-          },
-          refreshDisplay: () => {
-            this.updatePointsDisplay();
-            this.updateGenerationDisplay();
-            this.updatePatternButtonStates();
-            this.renderer.drawGrid();
-          },
-          showWaitingOverlay: () => this.showWaitingOverlay(),
-          hideWaitingOverlay: () => this.hideWaitingOverlay(),
-        },
-      );
-    }
-
-    this.setupEventListeners();
-
-    // Initialize displays
-    this.updatePointsDisplay();
-    this.updateGenerationDisplay();
-
-    // Online mode: dim opponent side and add "You" badge
-    if (this.localPlayer) {
-      this.setupOnlinePlayerIndicator();
-    }
-
-    // Start game immediately (lobby handles the waiting)
-    this.disableAllControls();
-    this.startPlacementPhase();
+    this.wireEventHandlers();
+    this.initialRender();
+    this.startBuyPhase();
   }
 
-  //#region Waiting Overlay
-  private createWaitingOverlay(): void {
-    this.waitingOverlay = document.createElement("div");
-    this.waitingOverlay.style.cssText = `
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.6);
-      z-index: 500;
-      justify-content: center;
-      align-items: center;
-    `;
-    const inner = document.createElement("div");
-    inner.style.cssText = `
-      background-color: #2a2a2a;
-      padding: 30px 50px;
-      border-radius: 10px;
-      text-align: center;
-    `;
-    inner.innerHTML = `
-      <p style="font-size: 20px; color: #ffaa00; margin: 0;">Waiting for opponent...</p>
-      <p style="font-size: 14px; color: #888; margin-top: 10px;">Synchronizing game state</p>
-    `;
-    this.waitingOverlay.appendChild(inner);
-    document.body.appendChild(this.waitingOverlay);
-  }
+  //#region Wiring
+  private wireEventHandlers(): void {
+    this.buyOverlay.onConfirm = (player) => this.onBuyConfirmed(player);
+    this.cardHand.onCardSelect = (cardId) => this.onCardSelect(cardId);
 
-  private showWaitingOverlay(): void {
-    if (!this.waitingOverlay) return;
-    if (this.waitingOverlayTimerId !== null) return;
-    this.waitingOverlayTimerId = window.setTimeout(() => {
-      this.waitingOverlayTimerId = null;
-      if (this.waitingOverlay) this.waitingOverlay.style.display = "flex";
-    }, 1000);
-  }
-
-  private hideWaitingOverlay(): void {
-    if (this.waitingOverlayTimerId !== null) {
-      clearTimeout(this.waitingOverlayTimerId);
-      this.waitingOverlayTimerId = null;
-    }
-    if (this.waitingOverlay) this.waitingOverlay.style.display = "none";
-  }
-  //#endregion
-
-  private setupOnlinePlayerIndicator(): void {
-    const localSide =
-      this.localPlayer === 1 ? this.dom.player1Side : this.dom.player2Side;
-    const remoteSide =
-      this.localPlayer === 1 ? this.dom.player2Side : this.dom.player1Side;
-    const localBtn =
-      this.localPlayer === 1 ? this.dom.player1Btn : this.dom.player2Btn;
-
-    remoteSide.style.opacity = "0.4";
-    remoteSide.style.pointerEvents = "none";
-
-    const badge = document.createElement("div");
-    badge.textContent = this.localPlayer === 1 ? "← You" : "You →";
-    const color =
-      this.localPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
-    badge.style.cssText = `
-      color: ${color};
-      font-size: 14px;
-      font-weight: bold;
-      text-align: center;
-      margin-bottom: -10px;
-    `;
-    localSide.insertBefore(badge, localBtn);
-  }
-
-  //#region Event Setup
-  private setupEventListeners(): void {
-    this.setupCanvasClick();
-    this.setupCanvasHover();
-    this.setupSurrenderButtons();
-    this.setupPatternButtons();
-    this.setupActionButtons();
-    this.setupRestartButton();
-    this.setupPreviewToggleButtons();
-  }
-
-  private setupCanvasClick(): void {
-    this.dom.gameCanvas.addEventListener("click", (e) => {
-      const phase = this.game.phase;
-      if (phase !== "placement" && phase !== "tactical") return;
-
-      const player = this.turns.activePlayer;
-      if (!this.isLocalPlayer(player)) return;
-      if (this.turns.isPlayerDone(player)) return;
-
-      const rect = this.dom.gameCanvas.getBoundingClientRect();
-      const col = Math.floor((e.clientX - rect.left) / this.cellSize);
-      const row = Math.floor((e.clientY - rect.top) / this.cellSize);
-
-      const pattern =
-        player === 1 ? this.selectedPattern1 : this.selectedPattern2;
-      if (!pattern) return;
-
-      const patternIndex = PATTERNS.indexOf(pattern);
-
-      // Online tactical phase: rollback-aware placement
-      if (this.syncManager && phase === "tactical") {
-        const gen = this.game.currentGeneration;
-        const success = this.executePlace(player, patternIndex, row, col);
-        if (success && this.syncManager.hasRollback) {
-          this.syncManager.addLocalTacticalAction({
-            player,
-            patternIndex,
-            row,
-            col,
-            generation: gen,
-          });
-        }
-        return;
-      }
-
-      // Placement phase or local mode
-      this.executePlace(player, patternIndex, row, col);
-
-      if (this.network) {
-        this.network.sendAction({
-          type: "placePattern",
-          player,
-          patternIndex,
-          row,
-          col,
-        });
-      }
+    this.dom.switchOverlayReadyBtn.addEventListener("click", () => {
+      this.onSwitchReady();
     });
-  }
 
-  private isLocalPlayer(player: Player): boolean {
-    if (this.localPlayer === null) return true;
-    return player === this.localPlayer;
-  }
-
-  private executePlace(
-    player: Player,
-    patternIndex: number,
-    row: number,
-    col: number,
-  ): boolean {
-    const pattern = PATTERNS[patternIndex];
-    if (!pattern) return false;
-
-    const playerPattern = getPatternForPlayer(pattern, player);
-
-    let placementCol = col;
-    if (player === 2) {
-      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-      placementCol = col - maxC;
-    }
-
-    const success = this.game.placePattern(
-      row,
-      placementCol,
-      playerPattern,
-      player,
+    this.dom.surrender1Btn.addEventListener("click", () =>
+      this.handleSurrender(1),
+    );
+    this.dom.surrender2Btn.addEventListener("click", () =>
+      this.handleSurrender(2),
     );
 
-    if (success) {
-      this.updatePointsDisplay();
-      this.turns.notifyPlacement();
-      this.updatePatternButtonStates();
-    } else {
-      this.renderer.flashInvalidPlacement(col, row);
-    }
-
-    this.renderer.drawGrid();
-    return success;
-  }
-
-  private setupCanvasHover(): void {
-    this.dom.gameCanvas.addEventListener("mousemove", (e) => {
-      const phase = this.game.phase;
-      if (phase !== "placement" && phase !== "tactical") return;
-
-      const rect = this.dom.gameCanvas.getBoundingClientRect();
-      const col = Math.floor((e.clientX - rect.left) / this.cellSize);
-      const row = Math.floor((e.clientY - rect.top) / this.cellSize);
-
-      this.drawHoverPreview(row, col);
-    });
-
-    this.dom.gameCanvas.addEventListener("mouseleave", () => {
-      this.renderer.drawGrid();
-    });
-  }
-
-  private setupSurrenderButtons(): void {
-    this.dom.surrender1Btn.addEventListener("click", () => {
-      if (!this.isLocalPlayer(1)) return;
-      if (confirm("Surrender? Your opponent wins!")) {
-        this.executeSurrender(1);
-        if (this.network) {
-          this.network.sendAction({ type: "surrender", player: 1 });
-        }
-      }
-    });
-
-    this.dom.surrender2Btn.addEventListener("click", () => {
-      if (!this.isLocalPlayer(2)) return;
-      if (confirm("Surrender? Your opponent wins!")) {
-        this.executeSurrender(2);
-        if (this.network) {
-          this.network.sendAction({ type: "surrender", player: 2 });
-        }
-      }
-    });
-  }
-
-  private executeSurrender(player: Player): void {
-    this.game.surrender(player);
-    this.turns.stopClock();
-    this.stopAnimation();
-    this.showWinner();
-  }
-
-  private setupPatternButtons(): void {
-    for (const btn of this.dom.player1Patterns) {
-      btn.addEventListener("click", () => {
-        if (!this.isLocalPlayer(1)) return;
-        const idx = parseInt(btn.getAttribute("data-pattern")!);
-        this.executeSelectPattern(1, idx);
-        if (this.network) {
-          this.network.sendAction({
-            type: "selectPattern",
-            player: 1,
-            patternIndex: idx,
-          });
-        }
-      });
-    }
-
-    for (const btn of this.dom.player2Patterns) {
-      btn.addEventListener("click", () => {
-        if (!this.isLocalPlayer(2)) return;
-        const idx = parseInt(btn.getAttribute("data-pattern")!);
-        this.executeSelectPattern(2, idx);
-        if (this.network) {
-          this.network.sendAction({
-            type: "selectPattern",
-            player: 2,
-            patternIndex: idx,
-          });
-        }
-      });
-    }
-  }
-
-  private executeSelectPattern(player: Player, patternIndex: number): void {
-    const pattern = PATTERNS[patternIndex]!;
-    if (player === 1) {
-      this.selectedPattern1 = pattern;
-      this.previewRenderer1.drawPreview(pattern, 1);
-      this.updatePatternInfo(1, pattern);
-      this.dom.previewToggle1.textContent = "▶";
-    } else {
-      this.selectedPattern2 = pattern;
-      this.previewRenderer2.drawPreview(pattern, 2);
-      this.updatePatternInfo(2, pattern);
-      this.dom.previewToggle2.textContent = "▶";
-    }
-  }
-
-  private setupActionButtons(): void {
-    this.dom.ready1Btn.addEventListener("click", () => {
-      if (!this.isLocalPlayer(1)) return;
-      if (this.turns.activePlayer === 1) {
-        const actionType = this.turns.hasPlaced() ? "pass" : "done";
-
-        // Online tactical phase: handle "done" via SyncManager
-        if (this.syncManager && this.game.isTactical && actionType === "done") {
-          this.syncManager.onLocalTacticalDone();
-          return;
-        }
-
-        this.turns.onActionButton();
-        if (this.network) {
-          this.network.sendAction({
-            type: actionType,
-            player: 1,
-          } as GameAction);
-        }
-      }
-    });
-
-    this.dom.ready2Btn.addEventListener("click", () => {
-      if (!this.isLocalPlayer(2)) return;
-      if (this.turns.activePlayer === 2) {
-        const actionType = this.turns.hasPlaced() ? "pass" : "done";
-
-        // Online tactical phase: handle "done" via SyncManager
-        if (this.syncManager && this.game.isTactical && actionType === "done") {
-          this.syncManager.onLocalTacticalDone();
-          return;
-        }
-
-        this.turns.onActionButton();
-        if (this.network) {
-          this.network.sendAction({
-            type: actionType,
-            player: 2,
-          } as GameAction);
-        }
-      }
-    });
-  }
-
-  private setupRestartButton(): void {
-    this.dom.restartBtn.addEventListener("click", () => {
-      this.resetGame();
-    });
-
+    // Winner overlay buttons
     this.dom.showBoardBtn.addEventListener("click", () => {
       this.dom.winnerOverlay.style.display = "none";
     });
+    this.dom.restartBtn.addEventListener("click", () => {
+      this.dom.winnerOverlay.style.display = "none";
+      this.cleanup();
+      if (this.onRestartRequested) this.onRestartRequested();
+    });
+
+    // Canvas mouse tracking for ghost preview + placement click
+    this.mouseMoveHandler = (e) => this.onCanvasMouseMove(e);
+    this.mouseLeaveHandler = () => this.onCanvasMouseLeave();
+    this.clickHandler = (e) => this.onCanvasClick(e);
+    this.dom.gameCanvas.addEventListener("mousemove", this.mouseMoveHandler);
+    this.dom.gameCanvas.addEventListener("mouseleave", this.mouseLeaveHandler);
+    this.dom.gameCanvas.addEventListener("click", this.clickHandler);
   }
 
-  private setupPreviewToggleButtons(): void {
-    this.dom.previewToggle1.addEventListener("click", () => {
-      const playing = this.previewRenderer1.togglePlayPause();
-      this.dom.previewToggle1.textContent = playing ? "⏸" : "▶";
-    });
-
-    this.dom.previewToggle2.addEventListener("click", () => {
-      const playing = this.previewRenderer2.togglePlayPause();
-      this.dom.previewToggle2.textContent = playing ? "⏸" : "▶";
-    });
+  private cleanup(): void {
+    this.stopSimulation();
+    if (this.mouseMoveHandler) {
+      this.dom.gameCanvas.removeEventListener(
+        "mousemove",
+        this.mouseMoveHandler,
+      );
+    }
+    if (this.mouseLeaveHandler) {
+      this.dom.gameCanvas.removeEventListener(
+        "mouseleave",
+        this.mouseLeaveHandler,
+      );
+    }
+    if (this.clickHandler) {
+      this.dom.gameCanvas.removeEventListener("click", this.clickHandler);
+    }
+    this.cardHand.clear();
+    this.scoreEffects.clear();
   }
   //#endregion
 
-  //#region Phase Management
+  //#region Initial Render
+  private initialRender(): void {
+    this.renderer.drawGrid();
+    this.updateStatusBar();
+    this.updateBudgetScoreDisplay();
+    this.dom.totalPhases.textContent = String(this.game.totalPhases);
+    this.dom.maxGenerations.textContent = String(this.game.simGenerations);
+    this.updateActivePlayerIndicator(null);
+  }
+  //#endregion
 
-  // ── Placement Phase ──────────────────────────────────────────────
+  //#region Buy Phase
+  private startBuyPhase(): void {
+    // Award budget for the new phase (phase 1 already has BUDGET_PER_PHASE
+    // from construction/reset; phases 2–5 add BUDGET_PER_PHASE to leftover).
+    if (this.game.currentPhaseNumber > 1) {
+      this.game.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
+      this.game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
+    }
 
-  private startPlacementPhase(): void {
-    logInfo(`[Game] Phase: placement (gen=${this.game.currentGeneration})`);
-    this.turns.onPhaseEnd = () => this.onPlacementPhaseEnd();
-    this.turns.startClock(CONFIG.CHESS_CLOCK_PLACEMENT_SEC);
-    this.updateActivePlayerUI();
+    this.pendingBuyers = [1, 2];
+    this.updateBudgetScoreDisplay();
+    this.updateStatusBar();
+    this.updateActivePlayerIndicator(null);
+    this.cardHand.clear();
+    logInfo(
+      `[Game] Buy phase ${this.game.currentPhaseNumber}/${this.game.totalPhases} started`,
+    );
+    this.promptNextBuyer();
   }
 
-  private onPlacementPhaseEnd(): void {
-    this.game.setPhase("simulation");
-    this.disableAllControls();
-    this.dom.turnTimerContainer.style.visibility = "hidden";
-
-    if (this.syncManager) {
-      this.syncManager.onPlacementDone();
+  private promptNextBuyer(): void {
+    const next = this.pendingBuyers[0];
+    if (next === undefined) {
+      this.onAllBuysConfirmed();
       return;
     }
 
-    this.startSimulation();
+    if (this.pendingBuyers.length === 2) {
+      this.showBuyOverlay(next);
+    } else {
+      this.showSwitchOverlay(next);
+    }
   }
 
-  // ── Simulation Phase ─────────────────────────────────────────────
+  private showSwitchOverlay(nextPlayer: Player): void {
+    const color =
+      nextPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+    this.dom.switchOverlayTitle.textContent =
+      `Pass the device to Player ${nextPlayer}`;
+    this.dom.switchOverlayTitle.style.color = color;
+    this.dom.switchOverlay.style.display = "flex";
+  }
 
+  private onSwitchReady(): void {
+    this.dom.switchOverlay.style.display = "none";
+    const next = this.pendingBuyers[0];
+    if (next !== undefined) {
+      this.showBuyOverlay(next);
+    }
+  }
+
+  private showBuyOverlay(player: Player): void {
+    this.buyOverlay.show(player);
+  }
+
+  private onBuyConfirmed(player: Player): void {
+    this.game.confirmBuy(player);
+    this.buyOverlay.hide();
+    this.pendingBuyers = this.pendingBuyers.filter((p) => p !== player);
+    this.updateBudgetScoreDisplay();
+    this.promptNextBuyer();
+  }
+
+  private onAllBuysConfirmed(): void {
+    this.game.finalizeBuyPhase();
+    this.startPlacePhase();
+  }
+  //#endregion
+
+  //#region Place Phase
+  private startPlacePhase(): void {
+    this.activePlacer = this.game.getPhaseStarter();
+    this.selectedCardId = null;
+    this.hoverCol = null;
+    this.hoverRow = null;
+
+    logInfo(
+      `[Game] Place phase started. Player ${this.activePlacer} goes first.`,
+    );
+
+    this.cardHand.setActivePlayer(this.activePlacer);
+    this.updateActivePlayerIndicator(this.activePlacer);
+    this.renderer.drawGrid();
+  }
+
+  private onCardSelect(cardId: string | null): void {
+    this.selectedCardId = cardId;
+    this.cardHand.setSelectedCard(cardId);
+    // Redraw to clear / update preview based on current hover
+    this.refreshHoverPreview();
+  }
+
+  private onCanvasMouseMove(e: MouseEvent): void {
+    if (!this.game.isPlacePhase) return;
+
+    const rect = this.dom.gameCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    this.hoverCol = Math.floor(x / this.cellSize);
+    this.hoverRow = Math.floor(y / this.cellSize);
+    this.refreshHoverPreview();
+  }
+
+  private onCanvasMouseLeave(): void {
+    if (!this.game.isPlacePhase) return;
+    this.hoverCol = null;
+    this.hoverRow = null;
+    this.renderer.drawGrid();
+  }
+
+  private refreshHoverPreview(): void {
+    if (!this.game.isPlacePhase) return;
+    if (
+      this.selectedCardId === null ||
+      this.hoverCol === null ||
+      this.hoverRow === null
+    ) {
+      this.renderer.drawGrid();
+      return;
+    }
+
+    const card = this.game.getCardById(this.activePlacer, this.selectedCardId);
+    if (!card) {
+      this.renderer.drawGrid();
+      return;
+    }
+
+    const basePattern = PATTERNS[card.patternIndex];
+    if (!basePattern) {
+      this.renderer.drawGrid();
+      return;
+    }
+
+    const pattern = getPatternForPlayer(basePattern, this.activePlacer);
+    const placementCol = getPlacementCol(
+      this.hoverCol,
+      pattern,
+      this.activePlacer,
+    );
+    const valid = this.game.zones.isValidPlacement(
+      placementCol,
+      this.activePlacer,
+    );
+    this.renderer.drawPlacementPreview(
+      pattern,
+      this.hoverRow,
+      placementCol,
+      this.activePlacer,
+      valid,
+    );
+  }
+
+  private onCanvasClick(e: MouseEvent): void {
+    if (!this.game.isPlacePhase) return;
+    if (this.selectedCardId === null) return;
+
+    const rect = this.dom.gameCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const col = Math.floor(x / this.cellSize);
+    const row = Math.floor(y / this.cellSize);
+
+    const card = this.game.getCardById(this.activePlacer, this.selectedCardId);
+    if (!card) return;
+
+    const basePattern = PATTERNS[card.patternIndex];
+    if (!basePattern) return;
+
+    const pattern = getPatternForPlayer(basePattern, this.activePlacer);
+    const placementCol = getPlacementCol(col, pattern, this.activePlacer);
+
+    const placed = this.game.placePattern(
+      row,
+      placementCol,
+      pattern,
+      this.activePlacer,
+    );
+    if (!placed) return; // Invalid placement, silent failure
+
+    // Remove card from hand
+    this.game.removeCardById(this.activePlacer, card.id);
+    this.selectedCardId = null;
+
+    // Advance turn: other player plays next if they still have cards,
+    // otherwise current player continues until their hand is empty too.
+    this.advanceTurn();
+
+    if (this.game.isPlacePhaseDone()) {
+      this.onPlacePhaseDone();
+      return;
+    }
+
+    this.cardHand.setActivePlayer(this.activePlacer);
+    this.updateActivePlayerIndicator(this.activePlacer);
+    this.renderer.drawGrid();
+  }
+
+  private advanceTurn(): void {
+    const other = this.activePlacer === 1 ? 2 : 1;
+    if (this.game.getHand(other).length > 0) {
+      this.activePlacer = other;
+    }
+    // else: keep current player — they'll finish their hand alone
+  }
+
+  private onPlacePhaseDone(): void {
+    logInfo(
+      `[Game] Place phase done. Starting simulation for ${this.game.simGenerations} generations.`,
+    );
+    this.game.setPhase("simulation");
+    this.updateActivePlayerIndicator(null);
+    this.cardHand.clear();
+    this.startSimulation();
+  }
+  //#endregion
+
+  //#region Simulation
   private startSimulation(): void {
-    this.stopAnimation();
-    logInfo(`[Game] Phase: simulation (gen=${this.game.currentGeneration})`);
-    this.animateSimulation();
-  }
-
-  // ── Tactical Phase ───────────────────────────────────────────────
-
-  private startTacticalPhase(): void {
-    this.stopAnimation();
-    this.game.setPhase("tactical");
-
-    if (this.syncManager) {
-      this.syncManager.onTacticalStart();
-      return;
-    }
-
-    this.beginTacticalPhaseAfterSync();
-  }
-
-  private beginTacticalPhaseAfterSync(): void {
-    logInfo(`[Game] Phase: tactical (gen=${this.game.currentGeneration})`);
-
-    // Wire onPhaseEnd for tactical phase
-    if (this.syncManager) {
-      this.turns.onPhaseEnd = () => {
-        // Timeout or both can't afford — treat as local done
-        this.syncManager!.onLocalTacticalDone();
-      };
-    } else {
-      this.turns.onPhaseEnd = () => this.onTacticalPhaseEnd();
-    }
-
-    this.turns.startClock(CONFIG.CHESS_CLOCK_TACTICAL_SEC);
-    this.updateActivePlayerUI();
-    this.animateTactical();
-  }
-
-  // Called when tactical phase ends in local mode (no network)
-  private onTacticalPhaseEnd(): void {
-    this.stopAnimation();
-    this.game.setPhase("simulation");
-    this.disableAllControls();
-    this.dom.turnTimerContainer.style.visibility = "hidden";
-    this.startSimulation();
-  }
-
-  //#endregion
-
-  //#region Animation
-  private animateSimulation(): void {
-    if (this.game.isEnded) {
-      this.showWinner();
-      return;
-    }
-
-    this.game.computeNextGeneration();
-    this.renderer.drawGrid();
-    this.updatePointsDisplay();
-    this.updateGenerationDisplay();
-
-    if (this.game.scoreEvents.length > 0) {
+    this.stopSimulation();
+    const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
+    const tick = () => {
+      if (!this.game.isSimulation) return;
+      this.game.computeNextGeneration();
       this.scoreEffects.feed(this.game.scoreEvents);
-    }
+      this.updateBudgetScoreDisplay();
+      this.updateStatusBar();
+      this.renderer.drawGrid();
 
-    if (this.game.isEnded) {
-      this.showWinner();
-      return;
-    }
-
-    if (this.game.shouldTriggerTactical()) {
-      this.startTacticalPhase();
-      return;
-    }
-
-    const delay = 1000 / CONFIG.FPS_FAST;
-    this.animationId = window.setTimeout(() => {
-      requestAnimationFrame(() => this.animateSimulation());
-    }, delay);
-  }
-
-  private animateTactical(): void {
-    if (this.game.isEnded) {
-      this.turns.stopClock();
-      this.showWinner();
-      return;
-    }
-
-    if (this.game.isSimulation) {
-      // Bug 3 debug: phase changed to simulation while tick was in flight
-      logDebug(`[Game] animateTactical aborted: phase is simulation (gen=${this.game.currentGeneration})`);
-      this.stopAnimation();
-      return;
-    }
-
-    if (this.animationId === null) {
-      // stopAnimation() was called but this tick was already dispatched
-      logDebug(`[Game] animateTactical aborted: animation stopped (gen=${this.game.currentGeneration})`);
-      return;
-    }
-
-    this.game.computeNextGeneration();
-    this.renderer.drawGrid();
-    this.updatePointsDisplay();
-    this.updateGenerationDisplay();
-
-    if (this.game.scoreEvents.length > 0) {
-      this.scoreEffects.feed(this.game.scoreEvents);
-    }
-
-    if (this.game.isEnded) {
-      this.turns.stopClock();
-      this.showWinner();
-      return;
-    }
-
-    this.scheduleNextTacticalFrame();
-  }
-
-  private scheduleNextTacticalFrame(): void {
-    const delay = 1000 / CONFIG.FPS_SLOW;
-    this.animationId = window.setTimeout(() => {
-      requestAnimationFrame(() => this.animateTactical());
-    }, delay);
-  }
-
-  private stopAnimation(): void {
-    if (this.animationId !== null) {
-      clearTimeout(this.animationId);
-      this.animationId = null;
-    }
-  }
-  //#endregion
-
-  //#region Hover Preview
-  private drawHoverPreview(row: number, col: number): void {
-    this.renderer.drawGrid();
-
-    const player = this.turns.activePlayer;
-    const pattern =
-      player === 1 ? this.selectedPattern1 : this.selectedPattern2;
-    if (!pattern) return;
-
-    const playerPattern = getPatternForPlayer(pattern, player);
-
-    let offsetCol = 0;
-    if (player === 2) {
-      const maxC = Math.max(...playerPattern.cells.map(([, c]) => c));
-      offsetCol = -maxC;
-    }
-
-    const isValid = this.game.zones.isValidPlacement(col, player);
-
-    const ctx = this.dom.gameCanvas.getContext("2d")!;
-    ctx.fillStyle = isValid ? "rgba(0, 255, 0, 0.3)" : "rgba(255, 0, 0, 0.3)";
-
-    for (const [rowOff, colOff] of playerPattern.cells) {
-      const r = row + rowOff;
-      const c = col + colOff + offsetCol;
-      if (r >= 0 && r < this.game.rows && c >= 0 && c < this.game.cols) {
-        ctx.fillRect(
-          c * this.cellSize,
-          r * this.cellSize,
-          this.cellSize - 1,
-          this.cellSize - 1,
-        );
+      if (this.game.isSimulationComplete()) {
+        this.stopSimulation();
+        this.onSimulationComplete();
+        return;
       }
+      this.simTimerId = window.setTimeout(tick, tickMs);
+    };
+    this.simTimerId = window.setTimeout(tick, tickMs);
+  }
+
+  private stopSimulation(): void {
+    if (this.simTimerId !== null) {
+      clearTimeout(this.simTimerId);
+      this.simTimerId = null;
     }
   }
-  //#endregion
 
-  //#region UI State Updates
-  private updateActivePlayerUI(): void {
-    const active = this.turns.activePlayer;
+  private onSimulationComplete(): void {
+    logInfo(
+      `[Game] Simulation of phase ${this.game.currentPhaseNumber} complete. ` +
+        `Score: P1=${this.game.scorePlayer1} P2=${this.game.scorePlayer2}`,
+    );
+    const wasLastPhase =
+      this.game.currentPhaseNumber >= this.game.totalPhases;
 
-    this.dom.player1Btn.style.opacity = active === 1 ? "1" : "0.5";
-    this.dom.player1Btn.style.boxShadow =
-      active === 1 ? `0 0 15px ${CONFIG.COLOR_PLAYER1}` : "none";
-    this.dom.player2Btn.style.opacity = active === 2 ? "1" : "0.5";
-    this.dom.player2Btn.style.boxShadow =
-      active === 2 ? `0 0 15px ${CONFIG.COLOR_PLAYER2}` : "none";
+    this.game.advanceAfterSimulation();
 
-    this.enablePlayerPatterns(active);
-    this.disablePlayerPatterns(active === 1 ? 2 : 1);
-    this.updatePatternButtonStates();
-
-    this.enablePreview(active);
-    this.disablePreview(active === 1 ? 2 : 1);
-
-    this.turns.updateButtonText();
-
-    this.dom.surrender1Btn.style.visibility = "visible";
-    this.dom.surrender2Btn.style.visibility = "visible";
-  }
-
-  private updatePointsDisplay(): void {
-    this.dom.points1.textContent = this.game.pointsPlayer1.toString();
-    this.dom.points2.textContent = this.game.pointsPlayer2.toString();
-  }
-
-  private updateGenerationDisplay(): void {
-    this.dom.generationCounter.textContent =
-      this.game.currentGeneration.toString();
-    this.dom.maxGenerations.textContent = this.game.maxGenerations.toString();
-  }
-
-  private updatePatternInfo(player: Player, pattern: Pattern | null): void {
-    const nameEl = player === 1 ? this.dom.patternName1 : this.dom.patternName2;
-    const costEl = player === 1 ? this.dom.patternCost1 : this.dom.patternCost2;
-
-    if (pattern) {
-      nameEl.textContent = pattern.name;
-      costEl.textContent = `Cost: ${pattern.cells.length}`;
+    if (wasLastPhase) {
+      this.showWinnerOverlay();
     } else {
-      nameEl.textContent = "-";
-      costEl.textContent = "Cost: -";
-    }
-  }
-
-  private updatePatternButtonStates(): void {
-    const active = this.turns.activePlayer;
-
-    for (const btn of this.dom.player1Patterns) {
-      const idx = parseInt(btn.getAttribute("data-pattern")!);
-      const cost = PATTERNS[idx]!.cells.length;
-      const canAfford = this.game.pointsPlayer1 >= cost;
-      const isActive = active === 1;
-      btn.disabled = !isActive || !canAfford;
-      btn.style.opacity = !isActive ? "0.3" : canAfford ? "1" : "0.3";
-    }
-
-    for (const btn of this.dom.player2Patterns) {
-      const idx = parseInt(btn.getAttribute("data-pattern")!);
-      const cost = PATTERNS[idx]!.cells.length;
-      const canAfford = this.game.pointsPlayer2 >= cost;
-      const isActive = active === 2;
-      btn.disabled = !isActive || !canAfford;
-      btn.style.opacity = !isActive ? "0.3" : canAfford ? "1" : "0.3";
-    }
-
-    if (
-      this.selectedPattern1 &&
-      this.game.pointsPlayer1 < this.selectedPattern1.cells.length
-    ) {
-      this.selectedPattern1 = null;
-      this.previewRenderer1.drawPreview(null, 1);
-      this.updatePatternInfo(1, null);
-    }
-    if (
-      this.selectedPattern2 &&
-      this.game.pointsPlayer2 < this.selectedPattern2.cells.length
-    ) {
-      this.selectedPattern2 = null;
-      this.previewRenderer2.drawPreview(null, 2);
-      this.updatePatternInfo(2, null);
+      this.updateStatusBar();
+      this.startBuyPhase();
     }
   }
   //#endregion
 
-  //#region Enable/Disable Controls
-  private enablePlayerPatterns(player: Player): void {
-    const patterns =
-      player === 1 ? this.dom.player1Patterns : this.dom.player2Patterns;
-    for (const btn of patterns) {
-      btn.disabled = false;
-      btn.style.opacity = "1";
-    }
-  }
-
-  private disablePlayerPatterns(player: Player): void {
-    const patterns =
-      player === 1 ? this.dom.player1Patterns : this.dom.player2Patterns;
-    for (const btn of patterns) {
-      btn.disabled = true;
-      btn.style.opacity = "0.3";
-    }
-  }
-
-  private disableAllControls(): void {
-    this.disablePlayerPatterns(1);
-    this.disablePlayerPatterns(2);
-
-    this.dom.ready1Btn.disabled = true;
-    this.dom.ready1Btn.style.opacity = "0.3";
-    this.dom.ready1Btn.textContent = "—";
-    this.dom.ready2Btn.disabled = true;
-    this.dom.ready2Btn.style.opacity = "0.3";
-    this.dom.ready2Btn.textContent = "—";
-
-    this.dom.player1Btn.style.boxShadow = "none";
-    this.dom.player1Btn.style.opacity = "0.5";
-    this.dom.player2Btn.style.boxShadow = "none";
-    this.dom.player2Btn.style.opacity = "0.5";
-  }
-
-  private enablePreview(player: Player): void {
-    const canvas =
-      player === 1 ? this.dom.previewCanvas1 : this.dom.previewCanvas2;
-    const toggle =
-      player === 1 ? this.dom.previewToggle1 : this.dom.previewToggle2;
-
-    canvas.style.opacity = "1";
-    toggle.style.opacity = "1";
-    toggle.disabled = false;
-    toggle.textContent = "▶";
-  }
-
-  private disablePreview(player: Player): void {
-    const canvas =
-      player === 1 ? this.dom.previewCanvas1 : this.dom.previewCanvas2;
-    const toggle =
-      player === 1 ? this.dom.previewToggle1 : this.dom.previewToggle2;
-    const prevRenderer =
-      player === 1 ? this.previewRenderer1 : this.previewRenderer2;
-    const pattern =
-      player === 1 ? this.selectedPattern1 : this.selectedPattern2;
-
-    prevRenderer.drawPreview(pattern, player);
-
-    canvas.style.opacity = "0.3";
-    toggle.style.opacity = "0.3";
-    toggle.disabled = true;
-    toggle.textContent = "▶";
+  //#region Surrender
+  private handleSurrender(player: Player): void {
+    if (this.game.isEnded) return;
+    const confirmed = window.confirm(`Player ${player}: surrender?`);
+    if (!confirmed) return;
+    this.game.surrender(player);
+    this.buyOverlay.hide();
+    this.dom.switchOverlay.style.display = "none";
+    this.stopSimulation();
+    logInfo(`[Game] Player ${player} surrendered.`);
+    this.showWinnerOverlay();
   }
   //#endregion
 
-  //#region Game End
-  private showWinner(): void {
-    this.turns.stopClock();
-    this.stopAnimation();
-    this.hideWaitingOverlay();
-    this.dom.turnTimerContainer.style.visibility = "hidden";
-
-    if (this.syncManager) {
-      this.syncManager.reset();
-    }
-
+  //#region Winner Overlay
+  private showWinnerOverlay(): void {
     const result = this.game.getWinner();
+    const { winner, player1Score, player2Score } = result;
 
-    const winnerLabel = result.winner === 1 ? "P1 wins"
-      : result.winner === 2 ? "P2 wins"
-      : "Tie";
-    logInfo(`[Game] Ended: ${winnerLabel} (${result.player1Score}-${result.player2Score})`);
-
-    if (result.winner === 1) {
-      this.dom.winnerTitle.textContent = "Player 1 Wins!";
-      this.dom.winnerTitle.style.color = CONFIG.COLOR_PLAYER1;
-      this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_PLAYER1;
-    } else if (result.winner === 2) {
-      this.dom.winnerTitle.textContent = "Player 2 Wins!";
-      this.dom.winnerTitle.style.color = CONFIG.COLOR_PLAYER2;
-      this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_PLAYER2;
+    if (winner === null) {
+      this.dom.winnerTitle.textContent = "Draw!";
+      this.dom.winnerTitle.style.color = "#ffaa00";
     } else {
-      this.dom.winnerTitle.textContent = "It's a Tie!";
-      this.dom.winnerTitle.style.color = CONFIG.COLOR_TACTICAL;
-      this.dom.restartBtn.style.backgroundColor = CONFIG.COLOR_TACTICAL;
+      const color =
+        winner === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+      this.dom.winnerTitle.textContent = `Player ${winner} Wins!`;
+      this.dom.winnerTitle.style.color = color;
     }
 
-    this.dom.winnerScore.textContent = `Score: ${result.player1Score} - ${result.player2Score}`;
+    const surrenderNote =
+      this.game.surrenderedPlayer !== null
+        ? ` (Player ${this.game.surrenderedPlayer} surrendered)`
+        : "";
+    this.dom.winnerScore.textContent =
+      `Score: ${player1Score} — ${player2Score}${surrenderNote}`;
+
     this.dom.winnerOverlay.style.display = "flex";
   }
   //#endregion
 
-  //#region Reset
-  private resetGame(): void {
-    this.turns.reset();
-    this.stopAnimation();
-    this.hideWaitingOverlay();
+  //#region Display Helpers
+  private updateStatusBar(): void {
+    this.dom.phaseCounter.textContent = String(this.game.currentPhaseNumber);
+    this.dom.generationCounter.textContent = String(
+      this.game.currentGeneration,
+    );
+  }
 
-    if (this.syncManager) {
-      this.syncManager.reset();
-    }
+  private updateBudgetScoreDisplay(): void {
+    this.dom.budget1.textContent = String(this.game.budgetPlayer1);
+    this.dom.budget2.textContent = String(this.game.budgetPlayer2);
+    this.dom.score1.textContent = String(this.game.scorePlayer1);
+    this.dom.score2.textContent = String(this.game.scorePlayer2);
+  }
 
-    this.dom.winnerOverlay.style.display = "none";
-
-    if (this.network) {
-      this.network.disconnect();
-      window.location.reload();
-      return;
-    }
-
-    this.game.reset();
-    this.renderer.drawGrid();
-    this.scoreEffects.clear();
-
-    this.selectedPattern1 = null;
-    this.selectedPattern2 = null;
-
-    this.updatePointsDisplay();
-    this.updateGenerationDisplay();
-
-    this.previewRenderer1.drawPreview(null, 1);
-    this.previewRenderer2.drawPreview(null, 2);
-    this.updatePatternInfo(1, null);
-    this.updatePatternInfo(2, null);
-    this.dom.previewToggle1.textContent = "▶";
-    this.dom.previewToggle2.textContent = "▶";
-
-    this.startPlacementPhase();
+  // Highlight the active player's side during the place phase.
+  // Pass null outside of place phase to clear.
+  private updateActivePlayerIndicator(active: Player | null): void {
+    const setSide = (side: HTMLDivElement, isActive: boolean) => {
+      side.style.outline = isActive ? "3px solid #00ff00" : "none";
+      side.style.outlineOffset = "4px";
+    };
+    setSide(this.dom.player1Side, active === 1);
+    setSide(this.dom.player2Side, active === 2);
   }
   //#endregion
 }

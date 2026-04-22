@@ -9,60 +9,53 @@ function getElement<T extends HTMLElement>(id: string): T {
   return el;
 }
 
-function getElements(selector: string): HTMLButtonElement[] {
-  return Array.from(
-    document.querySelectorAll<HTMLButtonElement>(selector),
-  );
-}
-
 export function createDOMRefs() {
   return {
-    // Canvases
+    // Main game canvas
     gameCanvas: getElement<HTMLCanvasElement>("gameCanvas"),
-    previewCanvas1: getElement<HTMLCanvasElement>("previewCanvas1"),
-    previewCanvas2: getElement<HTMLCanvasElement>("previewCanvas2"),
 
-    // Player header buttons
+    // Player side containers & headers
+    player1Side: getElement<HTMLDivElement>("player1Side"),
+    player2Side: getElement<HTMLDivElement>("player2Side"),
     player1Btn: getElement<HTMLButtonElement>("player1Btn"),
     player2Btn: getElement<HTMLButtonElement>("player2Btn"),
 
-    // Player side containers
-    player1Side: getElement<HTMLDivElement>("player1Side"),
-    player2Side: getElement<HTMLDivElement>("player2Side"),
+    // Budget & Score displays per player
+    budget1: getElement<HTMLSpanElement>("budget1"),
+    budget2: getElement<HTMLSpanElement>("budget2"),
+    score1: getElement<HTMLSpanElement>("score1"),
+    score2: getElement<HTMLSpanElement>("score2"),
 
-    // Points displays
-    points1: getElement<HTMLSpanElement>("points1"),
-    points2: getElement<HTMLSpanElement>("points2"),
-
-    // Generation display
+    // Status bar above canvas
+    phaseCounter: getElement<HTMLSpanElement>("phaseCounter"),
+    totalPhases: getElement<HTMLSpanElement>("totalPhases"),
     generationCounter: getElement<HTMLSpanElement>("generationCounter"),
     maxGenerations: getElement<HTMLSpanElement>("maxGenerations"),
 
-    // Turn timer
-    turnTimerContainer: getElement<HTMLDivElement>("turnTimerContainer"),
-    turnTimerBar: getElement<HTMLDivElement>("turnTimerBar"),
+    // Card hand containers (below canvas, one per player)
+    cardHand1: getElement<HTMLDivElement>("cardHand1"),
+    cardHand2: getElement<HTMLDivElement>("cardHand2"),
 
-    // Action buttons (Pass/Done in placement & tactical, disabled in simulation)
-    ready1Btn: getElement<HTMLButtonElement>("ready1Btn"),
-    ready2Btn: getElement<HTMLButtonElement>("ready2Btn"),
-
-    // Surrender buttons
+    // Quit / surrender
     surrender1Btn: getElement<HTMLSpanElement>("surrender1Btn"),
     surrender2Btn: getElement<HTMLSpanElement>("surrender2Btn"),
 
-    // Pattern buttons
-    player1Patterns: getElements(".player1-pattern"),
-    player2Patterns: getElements(".player2-pattern"),
+    // Buy overlay
+    buyOverlay: getElement<HTMLDivElement>("buyOverlay"),
+    buyOverlayTitle: getElement<HTMLHeadingElement>("buyOverlayTitle"),
+    buyOverlayBudget: getElement<HTMLSpanElement>("buyOverlayBudget"),
+    buyOverlayBudgetMax: getElement<HTMLSpanElement>("buyOverlayBudgetMax"),
+    buyOverlaySlots: getElement<HTMLSpanElement>("buyOverlaySlots"),
+    buyOverlaySlotsMax: getElement<HTMLSpanElement>("buyOverlaySlotsMax"),
+    buyOverlayPatternList: getElement<HTMLDivElement>("buyOverlayPatternList"),
+    buyOverlayConfirmBtn: getElement<HTMLButtonElement>("buyOverlayConfirmBtn"),
 
-    // Preview toggle buttons
-    previewToggle1: getElement<HTMLButtonElement>("previewToggle1"),
-    previewToggle2: getElement<HTMLButtonElement>("previewToggle2"),
-
-    // Pattern info
-    patternName1: getElement<HTMLDivElement>("patternName1"),
-    patternCost1: getElement<HTMLDivElement>("patternCost1"),
-    patternName2: getElement<HTMLDivElement>("patternName2"),
-    patternCost2: getElement<HTMLDivElement>("patternCost2"),
+    // Hotseat switch overlay
+    switchOverlay: getElement<HTMLDivElement>("switchOverlay"),
+    switchOverlayTitle: getElement<HTMLHeadingElement>("switchOverlayTitle"),
+    switchOverlayReadyBtn: getElement<HTMLButtonElement>(
+      "switchOverlayReadyBtn",
+    ),
 
     // Winner overlay
     winnerOverlay: getElement<HTMLDivElement>("winnerOverlay"),

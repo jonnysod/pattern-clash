@@ -105,6 +105,34 @@ export class Renderer {
     );
     setTimeout(() => this.drawGrid(), 100);
   }
+
+  // Draw a ghost preview of a pattern over the current grid.
+  // Green = valid placement, red = invalid (wrong zone).
+  drawPlacementPreview(
+    pattern: Pattern,
+    startRow: number,
+    startCol: number,
+    player: Player,
+    valid: boolean,
+  ): void {
+    this.drawGrid();
+    const cs = this.cellSize;
+    this.ctx.fillStyle = valid
+      ? "rgba(0, 255, 0, 0.4)"
+      : "rgba(255, 0, 0, 0.4)";
+    for (const [rowOffset, colOffset] of pattern.cells) {
+      const row = startRow + rowOffset;
+      const col = startCol + colOffset;
+      if (
+        row >= 0 &&
+        row < this.game.rows &&
+        col >= 0 &&
+        col < this.game.cols
+      ) {
+        this.ctx.fillRect(col * cs, row * cs, cs - 1, cs - 1);
+      }
+    }
+  }
 }
 
 export class PreviewRenderer {

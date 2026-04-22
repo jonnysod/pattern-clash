@@ -15,9 +15,6 @@
         background-color: #1a1a1a;
         color: white;
       }
-      h1 {
-        margin-bottom: 20px;
-      }
 
       canvas {
         border: 2px solid #444;
@@ -35,11 +32,31 @@
         cursor: pointer;
       }
 
-      .pattern-btn {
-        padding: 6px 12px;
+      button:disabled {
+        cursor: not-allowed;
+      }
+
+      .stat-label {
         font-size: 12px;
-        min-width: 80px;
-        text-align: left;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .stat-value {
+        font-size: 22px;
+        font-weight: bold;
+      }
+
+      .card-hand {
+        display: flex;
+        gap: 6px;
+        min-height: 96px;
+        padding: 6px;
+        overflow-x: auto;
+        background: #141414;
+        border: 1px solid #333;
+        border-radius: 6px;
+        width: 340px;
       }
     </style>
   </head>
@@ -52,7 +69,7 @@
         justify-content: center;
       "
     >
-      <!-- Spieler 1 (links) -->
+      <!-- Player 1 side -->
       <div
         id="player1Side"
         style="
@@ -60,6 +77,7 @@
           flex-direction: column;
           gap: 15px;
           align-items: center;
+          width: 360px;
         "
       >
         <button
@@ -70,9 +88,11 @@
             font-weight: bold;
             padding: 12px 24px;
             font-size: 16px;
+            border: none;
+            border-radius: 4px;
           "
         >
-          Spieler 1
+          Player 1
         </button>
         <span
           id="surrender1Btn"
@@ -87,166 +107,39 @@
           Quit
         </span>
 
-        <!-- Points display -->
-        <div style="font-size: 24px; font-weight: bold; color: #44dddd">
-          Points: <span id="points1">80</span>
-        </div>
-
-        <canvas
-          id="previewCanvas1"
-          width="100"
-          height="100"
-          style="border: 2px solid #666"
-        ></canvas>
-
-        <!-- Preview animation toggle -->
-        <button
-          id="previewToggle1"
-          style="
-            padding: 5px 10px;
-            font-size: 16px;
-            background-color: #333;
-            color: white;
-            border: 1px solid #666;
-            cursor: pointer;
-            margin-top: 5px;
-          "
-        >
-          ▶
-        </button>
-
-        <!-- Pattern info -->
-        <div style="text-align: center; margin-top: 5px">
-          <div
-            id="patternName1"
-            style="font-size: 14px; color: #ffffff; font-weight: bold"
-          >
-            -
-          </div>
-          <div id="patternCost1" style="font-size: 12px; color: #aaaaaa">
-            Cost: -
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 10px">
-          <!-- Defense column -->
-          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
-            <div
-              style="
-                font-size: 12px;
-                font-weight: bold;
-                text-align: center;
-                color: #aaaaaa;
-              "
-            >
-              Defense
+        <div style="display: flex; gap: 30px">
+          <div style="text-align: center">
+            <div class="stat-label">Score</div>
+            <div class="stat-value" style="color: #44dddd">
+              <span id="score1">0</span>
             </div>
-            <button class="pattern-btn player1-pattern" data-pattern="2">
-              Block
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="3">
-              Beehive
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="4">
-              Boat
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="5">
-              Blinker
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="6">
-              Toad
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="7">
-              Beacon
-            </button>
           </div>
-          <!-- Attack column -->
-          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
-            <div
-              style="
-                font-size: 12px;
-                font-weight: bold;
-                text-align: center;
-                color: #aaaaaa;
-              "
-            >
-              Attack
+          <div style="text-align: center">
+            <div class="stat-label">Budget</div>
+            <div class="stat-value" style="color: #ffffff">
+              <span id="budget1">50</span>
             </div>
-            <button class="pattern-btn player1-pattern" data-pattern="0">
-              LWSS
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="1">
-              MWSS
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="8">
-              Glider down
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="9">
-              Glider up
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="10">
-              HWSS
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="11">
-              Glider Gun up
-            </button>
-            <button class="pattern-btn player1-pattern" data-pattern="12">
-              Glider Gun down
-            </button>
           </div>
         </div>
-        <div style="margin-top: 10px">
-          <button
-            id="ready1Btn"
-            style="
-              padding: 10px 20px;
-              font-size: 14px;
-              background-color: #44dddd;
-              color: white;
-            "
-          >
-            Done
-          </button>
-        </div>
+
+        <div id="cardHand1" class="card-hand"></div>
       </div>
 
-      <!-- Main game canvas -->
+      <!-- Main game canvas + status bar -->
       <div>
-        <!-- Generation counter and Turn timer (above game canvas) -->
         <div style="text-align: center; margin-bottom: 10px; width: 700px">
-          <div style="font-size: 14px; color: #aaaaaa; margin-bottom: 5px">
-            Generation: <span id="generationCounter">0</span> /
-            <span id="maxGenerations"></span>
-          </div>
-
-          <!-- Turn timer bar (only visible in live phase) -->
-          <div id="turnTimerContainer" style="visibility: hidden">
-            <div
-              style="
-                width: 700px;
-                height: 8px;
-                background-color: #333;
-                border-radius: 4px;
-                overflow: hidden;
-                border: 1px solid #666;
-              "
-            >
-              <div
-                id="turnTimerBar"
-                style="
-                  height: 100%;
-                  width: 100%;
-                  background-color: #44dddd;
-                  transition: width 0.1s linear;
-                "
-              ></div>
-            </div>
+          <div style="font-size: 14px; color: #aaaaaa">
+            Phase <span id="phaseCounter">1</span> /
+            <span id="totalPhases">5</span>
+            &nbsp;·&nbsp; Generation:
+            <span id="generationCounter">0</span> /
+            <span id="maxGenerations">150</span>
           </div>
         </div>
         <canvas id="gameCanvas" width="700" height="700"></canvas>
       </div>
 
-      <!-- Spieler 2 (rechts) -->
+      <!-- Player 2 side -->
       <div
         id="player2Side"
         style="
@@ -254,6 +147,7 @@
           flex-direction: column;
           gap: 15px;
           align-items: center;
+          width: 360px;
         "
       >
         <button
@@ -264,9 +158,11 @@
             font-weight: bold;
             padding: 12px 24px;
             font-size: 16px;
+            border: none;
+            border-radius: 4px;
           "
         >
-          Spieler 2
+          Player 2
         </button>
         <span
           id="surrender2Btn"
@@ -281,128 +177,165 @@
           Quit
         </span>
 
-        <!-- Points display -->
-        <div style="font-size: 24px; font-weight: bold; color: #dd44dd">
-          Points: <span id="points2">80</span>
+        <div style="display: flex; gap: 30px">
+          <div style="text-align: center">
+            <div class="stat-label">Score</div>
+            <div class="stat-value" style="color: #dd44dd">
+              <span id="score2">0</span>
+            </div>
+          </div>
+          <div style="text-align: center">
+            <div class="stat-label">Budget</div>
+            <div class="stat-value" style="color: #ffffff">
+              <span id="budget2">50</span>
+            </div>
+          </div>
         </div>
 
-        <canvas
-          id="previewCanvas2"
-          width="100"
-          height="100"
-          style="border: 2px solid #666"
-        ></canvas>
+        <div id="cardHand2" class="card-hand"></div>
+      </div>
+    </div>
 
-        <!-- Preview animation toggle -->
-        <button
-          id="previewToggle2"
+    <!-- Buy overlay -->
+    <div
+      id="buyOverlay"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.85);
+        z-index: 900;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background-color: #2a2a2a;
+          padding: 25px 30px;
+          border-radius: 10px;
+          max-width: 520px;
+          width: 90%;
+          max-height: 85vh;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+        "
+      >
+        <h2
+          id="buyOverlayTitle"
+          style="margin: 0; font-size: 24px; text-align: center"
+        >
+          Buy Phase
+        </h2>
+
+        <div
           style="
-            padding: 5px 10px;
-            font-size: 16px;
-            background-color: #333;
-            color: white;
-            border: 1px solid #666;
-            cursor: pointer;
-            margin-top: 5px;
+            display: flex;
+            justify-content: space-around;
+            gap: 20px;
+            padding: 10px;
+            background: #1a1a1a;
+            border-radius: 6px;
           "
         >
-          ▶
+          <div style="text-align: center">
+            <div class="stat-label">Budget</div>
+            <div style="font-size: 20px; font-weight: bold">
+              <span id="buyOverlayBudget">50</span> /
+              <span id="buyOverlayBudgetMax" style="color: #888">50</span>
+            </div>
+          </div>
+          <div style="text-align: center">
+            <div class="stat-label">Slots</div>
+            <div style="font-size: 20px; font-weight: bold">
+              <span id="buyOverlaySlots">0</span> /
+              <span id="buyOverlaySlotsMax" style="color: #888">10</span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="buyOverlayPatternList"
+          style="
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-y: auto;
+            max-height: 55vh;
+            padding-right: 4px;
+          "
+        ></div>
+
+        <button
+          id="buyOverlayConfirmBtn"
+          style="
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #00ff00;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+          "
+        >
+          Confirm Buy
         </button>
+      </div>
+    </div>
 
-        <!-- Pattern info -->
-        <div style="text-align: center; margin-top: 5px">
-          <div
-            id="patternName2"
-            style="font-size: 14px; color: #ffffff; font-weight: bold"
-          >
-            -
-          </div>
-          <div id="patternCost2" style="font-size: 12px; color: #aaaaaa">
-            Cost: -
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 10px">
-          <!-- Attack column (first for Player 2) -->
-          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
-            <div
-              style="
-                font-size: 12px;
-                font-weight: bold;
-                text-align: center;
-                color: #aaaaaa;
-              "
-            >
-              Attack
-            </div>
-            <button class="pattern-btn player2-pattern" data-pattern="0">
-              LWSS
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="1">
-              MWSS
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="8">
-              Glider down
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="9">
-              Glider up
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="10">
-              HWSS
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="11">
-              Glider Gun up
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="12">
-              Glider Gun down
-            </button>
-          </div>
-          <!-- Defense column (second for Player 2) -->
-          <div style="display: flex; flex-direction: column; gap: 5px; flex: 1">
-            <div
-              style="
-                font-size: 12px;
-                font-weight: bold;
-                text-align: center;
-                color: #aaaaaa;
-              "
-            >
-              Defense
-            </div>
-            <button class="pattern-btn player2-pattern" data-pattern="2">
-              Block
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="3">
-              Beehive
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="4">
-              Boat
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="5">
-              Blinker
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="6">
-              Toad
-            </button>
-            <button class="pattern-btn player2-pattern" data-pattern="7">
-              Beacon
-            </button>
-          </div>
-        </div>
-        <!-- Ready button -->
-        <div style="margin-top: 10px">
-          <button
-            id="ready2Btn"
-            style="
-              padding: 10px 20px;
-              font-size: 14px;
-              background-color: #dd44dd;
-              color: white;
-            "
-          >
-            Done
-          </button>
-        </div>
+    <!-- Hotseat switch overlay -->
+    <div
+      id="switchOverlay"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.95);
+        z-index: 950;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background-color: #2a2a2a;
+          padding: 40px 60px;
+          border-radius: 10px;
+          text-align: center;
+        "
+      >
+        <h2
+          id="switchOverlayTitle"
+          style="margin: 0 0 20px 0; font-size: 28px"
+        >
+          Pass the device
+        </h2>
+        <p style="color: #aaa; margin: 0 0 25px 0">
+          Only the next player should see the screen.
+        </p>
+        <button
+          id="switchOverlayReadyBtn"
+          style="
+            padding: 12px 32px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #00ff00;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+          "
+        >
+          I'm ready
+        </button>
       </div>
     </div>
 
@@ -438,7 +371,6 @@
           Competitive Game of Life
         </p>
 
-        <!-- Mode selection (initial view) -->
         <div id="lobbyModeSelect">
           <button
             id="localGameBtn"
@@ -467,179 +399,34 @@
               color: #1a1a1a;
               border: none;
               border-radius: 5px;
-              cursor: pointer;
+              cursor: not-allowed;
               font-weight: bold;
               margin: 5px;
               width: 250px;
+              opacity: 0.4;
             "
+            disabled
           >
-            Online Game
+            Online Game (disabled)
           </button>
         </div>
 
-        <!-- Online: Create or Join -->
+        <!-- Kept in DOM so domRefs resolves; hidden while online is off -->
         <div id="lobbyOnlineChoice" style="display: none">
-          <button
-            id="createGameBtn"
-            style="
-              padding: 12px 30px;
-              font-size: 18px;
-              background-color: #44dddd;
-              color: #1a1a1a;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              font-weight: bold;
-              margin: 5px;
-              width: 250px;
-            "
-          >
-            Create Game
-          </button>
-          <br />
-          <button
-            id="joinGameBtn"
-            style="
-              padding: 12px 30px;
-              font-size: 18px;
-              background-color: #dd44dd;
-              color: #1a1a1a;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              font-weight: bold;
-              margin: 5px;
-              width: 250px;
-            "
-          >
-            Join Game
-          </button>
-          <br />
-          <button
-            id="lobbyBackBtn1"
-            style="
-              padding: 8px 20px;
-              font-size: 14px;
-              background-color: #666;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              margin-top: 15px;
-            "
-          >
-            ← Back
-          </button>
+          <button id="createGameBtn">Create Game</button>
+          <button id="joinGameBtn">Join Game</button>
+          <button id="lobbyBackBtn1">← Back</button>
         </div>
-
-        <!-- Waiting for opponent after creating -->
         <div id="lobbyWaiting" style="display: none">
-          <p style="font-size: 16px; color: #aaaaaa; margin-bottom: 10px">
-            Share this code with your opponent:
-          </p>
-          <div
-            id="gameCodeDisplay"
-            style="
-              font-size: 42px;
-              font-weight: bold;
-              color: #44dddd;
-              letter-spacing: 8px;
-              margin: 15px 0;
-              font-family: monospace;
-            "
-          >
-            ------
-          </div>
-          <p
-            id="lobbyStatus"
-            style="font-size: 14px; color: #888; margin-bottom: 15px"
-          >
-            Waiting for opponent...
-          </p>
-          <button
-            id="lobbyBackBtn2"
-            style="
-              padding: 8px 20px;
-              font-size: 14px;
-              background-color: #666;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-            "
-          >
-            ← Cancel
-          </button>
+          <div id="gameCodeDisplay">------</div>
+          <p id="lobbyStatus">Waiting for opponent...</p>
+          <button id="lobbyBackBtn2">← Cancel</button>
         </div>
-
-        <!-- Join game input -->
         <div id="lobbyJoin" style="display: none">
-          <p style="font-size: 16px; color: #aaaaaa; margin-bottom: 10px">
-            Enter game code:
-          </p>
-          <input
-            id="joinCodeInput"
-            type="text"
-            maxlength="6"
-            style="
-              font-size: 32px;
-              font-weight: bold;
-              text-align: center;
-              letter-spacing: 6px;
-              width: 220px;
-              padding: 10px;
-              border: 2px solid #666;
-              border-radius: 5px;
-              background-color: #1a1a1a;
-              color: #dd44dd;
-              font-family: monospace;
-              text-transform: uppercase;
-            "
-          />
-          <br />
-          <p
-            id="joinError"
-            style="
-              font-size: 14px;
-              color: #ff4444;
-              margin: 10px 0;
-              display: none;
-            "
-          >
-            Error
-          </p>
-          <button
-            id="joinConfirmBtn"
-            style="
-              padding: 12px 30px;
-              font-size: 18px;
-              background-color: #dd44dd;
-              color: #1a1a1a;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              font-weight: bold;
-              margin: 5px;
-            "
-          >
-            Join
-          </button>
-          <br />
-          <button
-            id="lobbyBackBtn3"
-            style="
-              padding: 8px 20px;
-              font-size: 14px;
-              background-color: #666;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-              margin-top: 15px;
-            "
-          >
-            ← Back
-          </button>
+          <input id="joinCodeInput" type="text" maxlength="6" />
+          <p id="joinError">Error</p>
+          <button id="joinConfirmBtn">Join</button>
+          <button id="lobbyBackBtn3">← Back</button>
         </div>
       </div>
     </div>
@@ -678,7 +465,7 @@
           id="winnerScore"
           style="font-size: 24px; color: #aaaaaa; margin-bottom: 30px"
         >
-          Score: 25 - 18
+          Score: 0 — 0
         </p>
         <button
           id="showBoardBtn"
@@ -712,14 +499,6 @@
       </div>
     </div>
 
-    <script type="importmap">
-      {
-        "imports": {
-          "firebase/app": "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js",
-          "firebase/firestore": "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js"
-        }
-      }
-    </script>
     <script type="module" src="./dist/main.js"></script>
   </body>
 </html>

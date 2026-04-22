@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "tsx tests/rollback.test.ts",
+    "test": "*",
     "build": "tsc",
     "watch": "tsc --watch"
   },

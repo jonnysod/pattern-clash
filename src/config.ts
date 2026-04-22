@@ -6,26 +6,20 @@ export const CONFIG = {
   CANVAS_WIDTH: 700,
   CANVAS_HEIGHT: 700,
 
-  // Game
-  INITIAL_BUDGET: 80,
-  MAX_GENERATIONS: 800,
-  SCORE_POINTS: 2,
+  // Game structure
+  PHASE_COUNT: 5, // Number of tactical phases in a full game
+  SIM_GENERATIONS: 150, // Generations per simulation phase
+  BUDGET_PER_PHASE: 50, // Points added to each player's budget at the start of each tactical phase
+  SCORE_POINTS: 1, // Points per cell reaching the opponent's endzone
+  MAX_SLOTS: 10, // Max total pattern slots per buy phase
+  MAX_COPIES_PER_TYPE: 3, // Max copies of any single pattern type per buy phase
 
-  // Animation
+  // Animation (will be used by simulation in Checkpoint C)
   FPS_FAST: 12,
-  FPS_SLOW: 2,
-
-  // Chess Clock
-  CHESS_CLOCK_PLACEMENT_SEC: 20, // Seconds per player, placement phase
-  CHESS_CLOCK_TACTICAL_SEC: 10, // Seconds per player, tactical phase
-
-  // Tactical Phases
-  TACTICAL_INTERVAL: 100, // Every N generations a tactical phase triggers
 
   // Colors
   COLOR_PLAYER1: "#44dddd",
   COLOR_PLAYER2: "#dd44dd",
-  COLOR_TACTICAL: "#ffaa00",
   COLOR_CELL: "#00ff00",
   COLOR_ZONE_PLAYER1: "#003333",
   COLOR_ZONE_PLAYER2: "#330033",
