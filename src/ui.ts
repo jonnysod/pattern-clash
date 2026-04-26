@@ -196,17 +196,38 @@ export class UIController {
   //#region Place Phase
   private startPlacePhase(): void {
     this.activePlacer = this.game.getPhaseStarter();
-    this.selectedCardId = null;
     this.hoverCol = null;
     this.hoverRow = null;
-
     logInfo(
-      `[Game] Place phase started. Player ${this.activePlacer} goes first.`,
+      `[Game] Place phase ${this.game.currentPhaseNumber} started. ` +
+        `Player ${this.activePlacer} goes first.`,
     );
+    this.beginTurn();
+  }
 
+  // Called at the start of place phase and after each placement.
+  // Handles all edge cases in one place:
+  // - Both hands empty → end place phase
+  // - Active player has no cards → switch to other (guaranteed non-empty
+  //   because of the check above)
+  // - Otherwise → set up the active player's turn
+  private beginTurn(): void {
+    if (this.game.isPlacePhaseDone()) {
+      this.onPlacePhaseDone();
+      return;
+    }
+    if (this.game.getHand(this.activePlacer).length === 0) {
+      this.activePlacer = this.activePlacer === 1 ? 2 : 1;
+    }
     this.cardHand.setActivePlayer(this.activePlacer);
+    this.autoSelectFirstCard();
     this.updateActivePlayerIndicator(this.activePlacer);
-    this.renderer.drawGrid();
+    this.refreshHoverPreview();
+  }
+
+  // Simple swap; beginTurn() handles the empty-hand case.
+  private advanceTurn(): void {
+    this.activePlacer = this.activePlacer === 1 ? 2 : 1;
   }
 
   private onCardSelect(cardId: string | null): void {
@@ -318,17 +339,19 @@ export class UIController {
       return;
     }
 
-    this.cardHand.setActivePlayer(this.activePlacer);
-    this.updateActivePlayerIndicator(this.activePlacer);
-    this.renderer.drawGrid();
+    this.game.removeCardById(this.activePlacer, card.id);
+    this.selectedCardId = null;
+    this.advanceTurn();
+    this.beginTurn();
   }
 
-  private advanceTurn(): void {
-    const other = this.activePlacer === 1 ? 2 : 1;
-    if (this.game.getHand(other).length > 0) {
-      this.activePlacer = other;
-    }
-    // else: keep current player — they'll finish their hand alone
+  // Auto-select first card in active player's hand. Called when a turn
+  // starts so the player doesn't have to click their card first.
+  private autoSelectFirstCard(): void {
+    const hand = this.game.getHand(this.activePlacer);
+    const firstCard = hand[0];
+    this.selectedCardId = firstCard ? firstCard.id : null;
+    this.cardHand.setSelectedCard(this.selectedCardId);
   }
 
   private onPlacePhaseDone(): void {
