@@ -261,10 +261,11 @@ export class BuyOverlay {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = CONFIG.COLOR_CELL;
+    const px = Math.max(1, cellSize - 1);
     for (const [r, c] of playerPattern.cells) {
       const x = offsetX + (c - minCol) * cellSize;
       const y = offsetY + (r - minRow) * cellSize;
-      ctx.fillRect(x, y, cellSize - 1, cellSize - 1);
+      ctx.fillRect(x, y, px, px);
     }
   }
 }
