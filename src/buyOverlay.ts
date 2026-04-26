@@ -62,9 +62,6 @@ export class BuyOverlay {
 
     // Set static maxima
     this.dom.buyOverlaySlotsMax.textContent = String(CONFIG.MAX_SLOTS);
-    this.dom.buyOverlayBudgetMax.textContent = String(
-      CONFIG.BUDGET_PER_PHASE,
-    );
 
     this.refresh();
     this.dom.buyOverlay.style.display = "flex";

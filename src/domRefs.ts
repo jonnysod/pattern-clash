@@ -44,7 +44,6 @@ export function createDOMRefs() {
     buyOverlay: getElement<HTMLDivElement>("buyOverlay"),
     buyOverlayTitle: getElement<HTMLHeadingElement>("buyOverlayTitle"),
     buyOverlayBudget: getElement<HTMLSpanElement>("buyOverlayBudget"),
-    buyOverlayBudgetMax: getElement<HTMLSpanElement>("buyOverlayBudgetMax"),
     buyOverlaySlots: getElement<HTMLSpanElement>("buyOverlaySlots"),
     buyOverlaySlotsMax: getElement<HTMLSpanElement>("buyOverlaySlotsMax"),
     buyOverlayPatternList: getElement<HTMLDivElement>("buyOverlayPatternList"),
