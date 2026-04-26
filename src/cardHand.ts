@@ -4,10 +4,10 @@
 // to the inactive player are shown face-down (back pattern). Clicking an
 // active player's card selects it for placement.
 
-import type { Player, Card } from "./types.js";
+import type { Player, Card, Pattern } from "./types.js";
 import { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer } from "./patternUtils.js";
+import { drawPatternPreview } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 
 export class CardHand {
@@ -162,46 +162,13 @@ export class CardHand {
 
   private drawMiniPreview(
     canvas: HTMLCanvasElement,
-    pattern: { cells: [number, number][] },
+    pattern: Pattern,
     player: Player,
   ): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const playerPattern = getPatternForPlayer(pattern as any, player);
-    const rows = playerPattern.cells.map(([r]) => r);
-    const cols = playerPattern.cells.map(([, c]) => c);
-    const minRow = Math.min(...rows);
-    const maxRow = Math.max(...rows);
-    const minCol = Math.min(...cols);
-    const maxCol = Math.max(...cols);
-    const patternHeight = maxRow - minRow + 1;
-    const patternWidth = maxCol - minCol + 1;
-
-    const margin = 3;
-    const availW = canvas.width - 2 * margin;
-    const availH = canvas.height - 2 * margin;
-    const cellSize = Math.max(
-      1,
-      Math.min(
-        5,
-        Math.floor(Math.min(availW / patternWidth, availH / patternHeight)),
-      ),
-    );
-
-    const drawW = patternWidth * cellSize;
-    const drawH = patternHeight * cellSize;
-    const offsetX = Math.floor((canvas.width - drawW) / 2);
-    const offsetY = Math.floor((canvas.height - drawH) / 2);
-
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = CONFIG.COLOR_CELL;
-    for (const [r, c] of playerPattern.cells) {
-      const x = offsetX + (c - minCol) * cellSize;
-      const y = offsetY + (r - minRow) * cellSize;
-      ctx.fillRect(x, y, cellSize - 1, cellSize - 1);
-    }
+    drawPatternPreview(canvas, pattern, player, {
+      cellColor: CONFIG.COLOR_CELL,
+      margin: 3,
+      maxCellSize: 5,
+    });
   }
 }

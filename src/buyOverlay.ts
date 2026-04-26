@@ -8,7 +8,7 @@ import type { Player, Pattern } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
 import { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
-import { getPatternForPlayer } from "./patternUtils.js";
+import { drawPatternPreview } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 
 interface PatternRowRefs {
@@ -224,45 +224,10 @@ export class BuyOverlay {
     pattern: Pattern,
     player: Player,
   ): void {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const playerPattern = getPatternForPlayer(pattern, player);
-    const rows = playerPattern.cells.map(([r]) => r);
-    const cols = playerPattern.cells.map(([, c]) => c);
-    const minRow = Math.min(...rows);
-    const maxRow = Math.max(...rows);
-    const minCol = Math.min(...cols);
-    const maxCol = Math.max(...cols);
-    const patternHeight = maxRow - minRow + 1;
-    const patternWidth = maxCol - minCol + 1;
-
-    // Fit pattern into canvas with a small margin, cap cell size for tiny patterns.
-    const margin = 4;
-    const availW = canvas.width - 2 * margin;
-    const availH = canvas.height - 2 * margin;
-    const cellSize = Math.max(
-      1,
-      Math.min(
-        6,
-        Math.floor(Math.min(availW / patternWidth, availH / patternHeight)),
-      ),
-    );
-
-    const drawW = patternWidth * cellSize;
-    const drawH = patternHeight * cellSize;
-    const offsetX = Math.floor((canvas.width - drawW) / 2);
-    const offsetY = Math.floor((canvas.height - drawH) / 2);
-
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = CONFIG.COLOR_CELL;
-    const px = Math.max(1, cellSize - 1);
-    for (const [r, c] of playerPattern.cells) {
-      const x = offsetX + (c - minCol) * cellSize;
-      const y = offsetY + (r - minRow) * cellSize;
-      ctx.fillRect(x, y, px, px);
-    }
+    drawPatternPreview(canvas, pattern, player, {
+      cellColor: CONFIG.COLOR_CELL,
+      margin: 4,
+      maxCellSize: 6,
+    });
   }
 }
