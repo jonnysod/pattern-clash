@@ -9,6 +9,7 @@ export const CONFIG = {
   // Game structure
   PHASE_COUNT: 5, // Number of tactical phases in a full game
   SIM_GENERATIONS: 150, // Generations per simulation phase
+  ADDITIONAL_INITIAL_BUDGET: 40, // Budget for phase 1
   BUDGET_PER_PHASE: 50, // Points added to each player's budget at the start of each tactical phase
   SCORE_POINTS: 1, // Points per cell reaching the opponent's endzone
   MAX_SLOTS: 10, // Max total pattern slots per buy phase
