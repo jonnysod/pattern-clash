@@ -39,8 +39,10 @@ export class Game {
   scorePlayer2: number = 0;
 
   // Budget (spending resource, accumulates across phases)
-  budgetPlayer1: number = CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
-  budgetPlayer2: number = CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
+  budgetPlayer1: number =
+    CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
+  budgetPlayer2: number =
+    CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
 
   // Buy inventory — reset at start of each buy phase
   inventoryPlayer1: BuyInventoryEntry[] = [];
@@ -134,8 +136,10 @@ export class Game {
     this.currentGeneration = 0;
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
-    this.budgetPlayer1 = CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
-    this.budgetPlayer2 = CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
+    this.budgetPlayer1 =
+      CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
+    this.budgetPlayer2 =
+      CONFIG.BUDGET_PER_PHASE + CONFIG.ADDITIONAL_INITIAL_BUDGET;
     this.inventoryPlayer1 = [];
     this.inventoryPlayer2 = [];
     this.buyConfirmedPlayer1 = false;

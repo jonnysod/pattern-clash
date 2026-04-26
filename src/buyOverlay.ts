@@ -55,8 +55,7 @@ export class BuyOverlay {
     this.renderPreviews(player);
 
     // Update title with player color
-    const color =
-      player === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+    const color = player === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
     this.dom.buyOverlayTitle.textContent = `Player ${player} — Buy Phase`;
     this.dom.buyOverlayTitle.style.color = color;
 
@@ -77,9 +76,7 @@ export class BuyOverlay {
     const player = this.currentPlayer;
     if (player === null) return;
 
-    this.dom.buyOverlayBudget.textContent = String(
-      this.game.getBudget(player),
-    );
+    this.dom.buyOverlayBudget.textContent = String(this.game.getBudget(player));
     this.dom.buyOverlaySlots.textContent = String(
       this.game.getSlotCount(player),
     );
@@ -246,7 +243,10 @@ export class BuyOverlay {
     const availH = canvas.height - 2 * margin;
     const cellSize = Math.max(
       1,
-      Math.min(6, Math.floor(Math.min(availW / patternWidth, availH / patternHeight))),
+      Math.min(
+        6,
+        Math.floor(Math.min(availW / patternWidth, availH / patternHeight)),
+      ),
     );
 
     const drawW = patternWidth * cellSize;
