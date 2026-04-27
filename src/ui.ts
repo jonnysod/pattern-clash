@@ -329,18 +329,6 @@ export class UIController {
     // Remove card from hand
     this.game.removeCardById(this.activePlacer, card.id);
     this.selectedCardId = null;
-
-    // Advance turn: other player plays next if they still have cards,
-    // otherwise current player continues until their hand is empty too.
-    this.advanceTurn();
-
-    if (this.game.isPlacePhaseDone()) {
-      this.onPlacePhaseDone();
-      return;
-    }
-
-    this.game.removeCardById(this.activePlacer, card.id);
-    this.selectedCardId = null;
     this.advanceTurn();
     this.beginTurn();
   }
