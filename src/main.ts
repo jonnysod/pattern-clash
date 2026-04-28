@@ -6,6 +6,7 @@
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
+import { LocalSyncManager } from "./syncManager.js";
 import { createDOMRefs } from "./domRefs.js";
 import { CONFIG } from "./config.js";
 import { logInfo } from "./logger.js";
@@ -30,7 +31,14 @@ function startLocalGame(): void {
   game.reset();
   renderer.drawGrid();
 
-  uiController = new UIController(game, dom, renderer, CONFIG.CELL_SIZE);
+  const syncManager = new LocalSyncManager();
+  uiController = new UIController(
+    game,
+    dom,
+    renderer,
+    syncManager,
+    CONFIG.CELL_SIZE,
+  );
   uiController.onRestartRequested = () => {
     uiController = null;
     showLobby();

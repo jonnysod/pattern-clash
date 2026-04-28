@@ -1,8 +1,14 @@
 // UI Controller — orchestrates the full game flow:
 //   buy → place → simulation → (next phase or ended)
+//
+// All state-mutating actions are routed through SyncManager.sendAction.
+// The manager loops them back to onRemoteAction (which mutates Game),
+// so this controller has a single mutation entry point regardless of
+// whether the game is local hotseat or online.
 
-import type { Player } from "./types.js";
+import type { Player, SyncAction } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
+import type { SyncManager } from "./syncManager.js";
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { BuyOverlay } from "./buyOverlay.js";
@@ -11,12 +17,13 @@ import { ScoreEffects } from "./scoreEffects.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
-import { logInfo } from "./logger.js";
+import { logInfo, logWarn } from "./logger.js";
 
 export class UIController {
   private game: Game;
   private dom: DOMRefs;
   private renderer: Renderer;
+  private syncManager: SyncManager;
   private buyOverlay: BuyOverlay;
   private cardHand: CardHand;
   private scoreEffects: ScoreEffects;
@@ -42,15 +49,25 @@ export class UIController {
   // Restart callback (set by main.ts to return to the start overlay)
   onRestartRequested: (() => void) | null = null;
 
-  constructor(game: Game, dom: DOMRefs, renderer: Renderer, cellSize: number) {
+  constructor(
+    game: Game,
+    dom: DOMRefs,
+    renderer: Renderer,
+    syncManager: SyncManager,
+    cellSize: number,
+  ) {
     this.game = game;
     this.dom = dom;
     this.renderer = renderer;
+    this.syncManager = syncManager;
     this.cellSize = cellSize;
 
     this.buyOverlay = new BuyOverlay(game, dom);
     this.cardHand = new CardHand(game, dom.cardHand1, dom.cardHand2);
     this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
+
+    this.syncManager.onRemoteAction = (action) => this.applyAction(action);
+    this.syncManager.start();
 
     this.wireEventHandlers();
     this.initialRender();
@@ -94,6 +111,8 @@ export class UIController {
 
   private cleanup(): void {
     this.stopSimulation();
+    this.syncManager.stop();
+    this.syncManager.onRemoteAction = null;
     if (this.mouseMoveHandler) {
       this.dom.gameCanvas.removeEventListener(
         "mousemove",
@@ -180,9 +199,13 @@ export class UIController {
   }
 
   private onBuyConfirmed(player: Player): void {
-    this.game.confirmBuy(player);
+    // Snapshot cardCount BEFORE sending — applyBuyConfirm in the
+    // loopback consumes inventory state; here we just count slots.
+    const cardCount = this.game.getSlotCount(player);
     this.buyOverlay.hide();
     this.pendingBuyers = this.pendingBuyers.filter((p) => p !== player);
+    // sendAction loops back to applyAction → game.applyBuyConfirm
+    this.syncManager.sendAction({ type: "buyConfirm", player, cardCount });
     this.updateBudgetScoreDisplay();
     this.promptNextBuyer();
   }
@@ -312,25 +335,36 @@ export class UIController {
     const card = this.game.getCardById(this.activePlacer, this.selectedCardId);
     if (!card) return;
 
-    const basePattern = PATTERNS[card.patternIndex];
+    // Local hand: real cards always have a real patternIndex.
+    // (Placeholders only exist for the *remote* player's hand in online
+    // play, and we never click on those.)
+    const patternIndex = card.patternIndex;
+    const basePattern = PATTERNS[patternIndex];
     if (!basePattern) return;
 
     const pattern = getPatternForPlayer(basePattern, this.activePlacer);
     const placementCol = getPlacementCol(col, pattern, this.activePlacer);
 
-    const placed = this.game.placePattern(
-      row,
-      placementCol,
-      pattern,
-      this.activePlacer,
-    );
-    if (!placed) return; // Invalid placement, silent failure
+    // Pre-validate without mutating: if invalid, swallow the click silently.
+    if (
+      !this.game.zones.isValidPatternPlacement(
+        pattern,
+        placementCol,
+        this.activePlacer,
+      )
+    ) {
+      return;
+    }
 
-    // Remove card from hand
-    this.game.removeCardById(this.activePlacer, card.id);
-    this.selectedCardId = null;
-    this.advanceTurn();
-    this.beginTurn();
+    // Send action; loopback applies it to Game.
+    this.syncManager.sendAction({
+      type: "placement",
+      player: this.activePlacer,
+      cardId: card.id,
+      patternIndex,
+      row,
+      col: placementCol,
+    });
   }
 
   // Auto-select first card in active player's hand. Called when a turn
@@ -405,12 +439,50 @@ export class UIController {
     if (this.game.isEnded) return;
     const confirmed = window.confirm(`Player ${player}: surrender?`);
     if (!confirmed) return;
-    this.game.surrender(player);
-    this.buyOverlay.hide();
-    this.dom.switchOverlay.style.display = "none";
-    this.stopSimulation();
-    logInfo(`[Game] Player ${player} surrendered.`);
-    this.showWinnerOverlay();
+    this.syncManager.sendAction({ type: "surrender", player });
+  }
+  //#endregion
+
+  //#region Sync — apply actions
+  // Single mutation entry point. Called by SyncManager.onRemoteAction
+  // for every action, regardless of origin (local loopback or remote
+  // network). Applies the action to Game and updates UI as needed.
+  private applyAction(action: SyncAction): void {
+    switch (action.type) {
+      case "buyConfirm":
+        this.game.applyBuyConfirm(action.player, action.cardCount);
+        break;
+
+      case "placement": {
+        const ok = this.game.applyPlacement(
+          action.player,
+          action.cardId,
+          action.patternIndex,
+          action.row,
+          action.col,
+        );
+        if (!ok) {
+          logWarn("[Sync] placement action rejected:", action);
+          return;
+        }
+        // Local UI follow-up: clear selection, advance turn.
+        if (action.player === this.activePlacer) {
+          this.selectedCardId = null;
+        }
+        this.advanceTurn();
+        this.beginTurn();
+        break;
+      }
+
+      case "surrender":
+        this.game.applySurrender(action.player);
+        this.buyOverlay.hide();
+        this.dom.switchOverlay.style.display = "none";
+        this.stopSimulation();
+        logInfo(`[Game] Player ${action.player} surrendered.`);
+        this.showWinnerOverlay();
+        break;
+    }
   }
   //#endregion
 

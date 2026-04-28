@@ -11,6 +11,7 @@ import type {
 import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
 import { CONFIG } from "./config.js";
+import { getPatternForPlayer } from "./patternUtils.js";
 
 // Valid phase transitions
 const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
@@ -52,7 +53,13 @@ export class Game {
   buyConfirmedPlayer1: boolean = false;
   buyConfirmedPlayer2: boolean = false;
 
-  // Hand (for place phase — populated at confirmBuy)
+  // Card-count of each player's hand at confirm time. Set by
+  // applyBuyConfirm. Used at finalizeBuyPhase to size the placeholder
+  // hand for a remote player whose inventory we never saw (online).
+  expectedHandSizePlayer1: number = 0;
+  expectedHandSizePlayer2: number = 0;
+
+  // Hand (for place phase — populated at finalizeBuyPhase)
   handPlayer1: Card[] = [];
   handPlayer2: Card[] = [];
 
@@ -144,6 +151,8 @@ export class Game {
     this.inventoryPlayer2 = [];
     this.buyConfirmedPlayer1 = false;
     this.buyConfirmedPlayer2 = false;
+    this.expectedHandSizePlayer1 = 0;
+    this.expectedHandSizePlayer2 = 0;
     this.handPlayer1 = [];
     this.handPlayer2 = [];
     this.surrenderedPlayer = null;
@@ -331,12 +340,23 @@ export class Game {
     return player === 1 ? this.buyConfirmedPlayer1 : this.buyConfirmedPlayer2;
   }
 
-  confirmBuy(player: Player): void {
+  // Apply a buyConfirm action. Sets the confirmed flag and stores the
+  // declared cardCount. Idempotent: a second call for the same player
+  // is a no-op (protects against accidental double-apply).
+  //
+  // Note: this client may or may not have the player's full inventory.
+  // - In hotseat, both players' inventories are local (set via buyPattern).
+  // - In online, only the local player's inventory is present;
+  //   the remote player's inventory stays empty here, and finalizeBuyPhase
+  //   uses cardCount instead to build placeholder cards.
+  applyBuyConfirm(player: Player, cardCount: number): void {
     if (this.isBuyConfirmed(player)) return;
     if (player === 1) {
       this.buyConfirmedPlayer1 = true;
+      this.expectedHandSizePlayer1 = cardCount;
     } else {
       this.buyConfirmedPlayer2 = true;
+      this.expectedHandSizePlayer2 = cardCount;
     }
   }
 
@@ -344,16 +364,51 @@ export class Game {
     return this.buyConfirmedPlayer1 && this.buyConfirmedPlayer2;
   }
 
-  // Expand both players' inventories into hand cards and transition to place phase.
-  // Called by the UI once bothPlayersConfirmed() is true.
+  // Expand both players' inventories into hand cards and transition to
+  // place phase. Called by the UI once bothPlayersConfirmed() is true.
+  //
+  // Card-ID assignment is hardcoded P1 → P2. This is independent of
+  // getPhaseStarter(): even if the starter ever becomes configurable
+  // (random/manual/loser-starts), card IDs are always assigned in
+  // P1→P2 order so they match across clients deterministically.
   finalizeBuyPhase(): void {
-    this.handPlayer1 = this.expandInventoryToHand(this.inventoryPlayer1);
-    this.handPlayer2 = this.expandInventoryToHand(this.inventoryPlayer2);
+    this.handPlayer1 = this.buildHand(
+      this.inventoryPlayer1,
+      this.expectedHandSizePlayer1,
+    );
+    this.handPlayer2 = this.buildHand(
+      this.inventoryPlayer2,
+      this.expectedHandSizePlayer2,
+    );
     this.inventoryPlayer1 = [];
     this.inventoryPlayer2 = [];
     this.buyConfirmedPlayer1 = false;
     this.buyConfirmedPlayer2 = false;
+    this.expectedHandSizePlayer1 = 0;
+    this.expectedHandSizePlayer2 = 0;
     this.setPhase("tactical-place");
+  }
+
+  // If the inventory has entries, expand it to real cards (local player
+  // or hotseat). Otherwise, build placeholder cards from cardCount
+  // (online: this is the remote player whose inventory we never saw).
+  // Either way, IDs come from the same _nextCardId counter, so they
+  // match across clients.
+  private buildHand(
+    inventory: BuyInventoryEntry[],
+    cardCount: number,
+  ): Card[] {
+    if (inventory.length > 0) {
+      return this.expandInventoryToHand(inventory);
+    }
+    const placeholders: Card[] = [];
+    for (let i = 0; i < cardCount; i++) {
+      placeholders.push({
+        id: `c${this._nextCardId++}`,
+        patternIndex: -1, // resolved when its placement action arrives
+      });
+    }
+    return placeholders;
   }
 
   private expandInventoryToHand(inventory: BuyInventoryEntry[]): Card[] {
@@ -387,6 +442,37 @@ export class Game {
     return true;
   }
 
+  // Apply a placement action atomically: resolve the card's
+  // patternIndex if it was a placeholder, mirror the pattern for the
+  // player, place it on the grid, and remove the card from the hand.
+  //
+  // `col` is the placement column (already adjusted for player 2 by
+  // the caller via getPlacementCol). `patternIndex` is the action's
+  // patternIndex; for the local player's own cards it equals the
+  // card's patternIndex, and for an unresolved placeholder it sets it.
+  applyPlacement(
+    player: Player,
+    cardId: string,
+    patternIndex: number,
+    row: number,
+    col: number,
+  ): boolean {
+    const card = this.getCardById(player, cardId);
+    if (!card) return false;
+
+    const basePattern = PATTERNS[patternIndex];
+    if (!basePattern) return false;
+
+    const pattern = getPatternForPlayer(basePattern, player);
+    if (!this.placePattern(row, col, pattern, player)) {
+      return false;
+    }
+    // Resolve placeholder if needed (no-op for already-resolved cards).
+    card.patternIndex = patternIndex;
+    this.removeCardById(player, cardId);
+    return true;
+  }
+
   isPlacePhaseDone(): boolean {
     return this.handPlayer1.length === 0 && this.handPlayer2.length === 0;
   }
@@ -405,7 +491,8 @@ export class Game {
   //#endregion
 
   //#region End Conditions
-  surrender(player: Player): void {
+  applySurrender(player: Player): void {
+    if (this.surrenderedPlayer !== null) return; // idempotent
     this.surrenderedPlayer = player;
     this._phase = "ended";
   }

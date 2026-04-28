@@ -90,12 +90,12 @@ describe("Game — Buy Logic", () => {
     expect(game.sellPattern(1, BLOCK_INDEX)).toBe(false);
   });
 
-  it("confirmBuy sets the flag and bothPlayersConfirmed reflects state", () => {
+  it("applyBuyConfirm sets the flag and bothPlayersConfirmed reflects state", () => {
     expect(game.bothPlayersConfirmed()).toBe(false);
-    game.confirmBuy(1);
+    game.applyBuyConfirm(1, 0);
     expect(game.isBuyConfirmed(1)).toBe(true);
     expect(game.bothPlayersConfirmed()).toBe(false);
-    game.confirmBuy(2);
+    game.applyBuyConfirm(2, 0);
     expect(game.bothPlayersConfirmed()).toBe(true);
   });
 
@@ -105,6 +105,8 @@ describe("Game — Buy Logic", () => {
     game.buyPattern(1, BLINKER_INDEX);
     game.buyPattern(2, LWSS_INDEX);
 
+    game.applyBuyConfirm(1, 3);
+    game.applyBuyConfirm(2, 1);
     game.finalizeBuyPhase();
 
     expect(game.getHand(1)).toHaveLength(3);
@@ -118,6 +120,28 @@ describe("Game — Buy Logic", () => {
     // Each card must have a unique ID
     const ids = game.getHand(1).map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
+    // Real cards have real patternIndex (≥ 0), not placeholders
+    for (const card of game.getHand(1)) {
+      expect(card.patternIndex).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("finalizeBuyPhase builds placeholder cards when inventory is empty (online: remote player)", () => {
+    // Simulate the online case for player 2: this client has no
+    // local inventory for P2, only the cardCount that arrived via sync.
+    game.buyPattern(1, BLOCK_INDEX);
+    game.applyBuyConfirm(1, 1);
+    game.applyBuyConfirm(2, 4); // remote, no inventory
+    game.finalizeBuyPhase();
+
+    expect(game.getHand(1)).toHaveLength(1);
+    expect(game.getHand(2)).toHaveLength(4);
+    // Player 1's card is real
+    expect(game.getHand(1)[0]!.patternIndex).toBe(BLOCK_INDEX);
+    // Player 2's cards are placeholders
+    for (const card of game.getHand(2)) {
+      expect(card.patternIndex).toBe(-1);
+    }
   });
 });
 
@@ -197,6 +221,49 @@ describe("Game — Place Logic", () => {
     expect(game.getPhaseStarter()).toBe(2);
     game.currentPhaseNumber = 5;
     expect(game.getPhaseStarter()).toBe(1);
+  });
+
+  it("applyPlacement resolves a placeholder card's patternIndex", () => {
+    // Build a hand with a placeholder for player 2 (online-style)
+    game.buyPattern(1, BLOCK_INDEX);
+    game.applyBuyConfirm(1, 1);
+    game.applyBuyConfirm(2, 1);
+    game.finalizeBuyPhase();
+
+    const placeholder = game.getHand(2)[0]!;
+    expect(placeholder.patternIndex).toBe(-1);
+
+    // Apply remote placement action — patternIndex arrives in the action.
+    const startCol = game.zones.rightStart + 5;
+    const ok = game.applyPlacement(2, placeholder.id, BLOCK_INDEX, 20, startCol);
+    expect(ok).toBe(true);
+    // Card removed from hand after successful placement
+    expect(game.getHand(2)).toHaveLength(0);
+    // Pattern was actually placed
+    expect(game.grid[20]![startCol]).toBe(true);
+  });
+
+  it("applyPlacement rejects unknown cardId", () => {
+    game.buyPattern(1, BLOCK_INDEX);
+    game.applyBuyConfirm(1, 1);
+    game.applyBuyConfirm(2, 0);
+    game.finalizeBuyPhase();
+    const ok = game.applyPlacement(1, "nonexistent", BLOCK_INDEX, 20, 10);
+    expect(ok).toBe(false);
+  });
+
+  it("applyPlacement rejects placement in opponent zone (does not consume card)", () => {
+    game.buyPattern(1, BLOCK_INDEX);
+    game.applyBuyConfirm(1, 1);
+    game.applyBuyConfirm(2, 0);
+    game.finalizeBuyPhase();
+
+    const card = game.getHand(1)[0]!;
+    const opponentCol = game.zones.rightStart + 5;
+    const ok = game.applyPlacement(1, card.id, BLOCK_INDEX, 20, opponentCol);
+    expect(ok).toBe(false);
+    // Card must still be in hand — failed placement doesn't consume it
+    expect(game.getHand(1)).toHaveLength(1);
   });
 });
 
@@ -314,7 +381,7 @@ describe("Game — End Conditions & Phase Flow", () => {
   it("getWinner: a surrendered player loses, regardless of score", () => {
     game.scorePlayer1 = 100;
     game.scorePlayer2 = 0;
-    game.surrender(1);
+    game.applySurrender(1);
     expect(game.phase).toBe("ended");
     expect(game.getWinner().winner).toBe(2);
   });

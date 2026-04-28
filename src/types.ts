@@ -42,8 +42,30 @@ export interface BuyInventoryEntry {
 }
 
 // Single card in hand (expanded from inventory at confirmBuy).
-// Used in the place phase.
+// Used in the place phase. patternIndex < 0 means "placeholder"
+// (used online for the remote player's hand — resolved on placement).
 export interface Card {
   id: string; // Unique id for UI tracking
   patternIndex: number;
 }
+
+// Synced game actions. These are the only state mutations that need
+// to cross the network. Everything else (UI selections, hover state,
+// buy-overlay open/close) is local-only.
+//
+// Note: buyConfirm carries only `cardCount`, not the full inventory.
+// The remote client builds placeholder cards from this count; their
+// patternIndex is filled in when the corresponding placement action
+// arrives. This prevents leaking the opponent's full hand at confirm
+// time.
+export type SyncAction =
+  | { type: "buyConfirm"; player: Player; cardCount: number }
+  | {
+      type: "placement";
+      player: Player;
+      cardId: string;
+      patternIndex: number;
+      row: number;
+      col: number;
+    }
+  | { type: "surrender"; player: Player };
