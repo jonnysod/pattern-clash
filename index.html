@@ -410,20 +410,156 @@
 
         <!-- Kept in DOM so domRefs resolves; hidden while online is off -->
         <div id="lobbyOnlineChoice" style="display: none">
-          <button id="createGameBtn">Create Game</button>
-          <button id="joinGameBtn">Join Game</button>
-          <button id="lobbyBackBtn1">← Back</button>
+          <button
+            id="createGameBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #00ff00;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Create Game
+          </button>
+          <br />
+          <button
+            id="joinGameBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #44dddd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Join Game
+          </button>
+          <br />
+          <button
+            id="lobbyBackBtn1"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: transparent;
+              color: #888;
+              border: none;
+              cursor: pointer;
+              margin-top: 15px;
+            "
+          >
+            ← Back
+          </button>
         </div>
         <div id="lobbyWaiting" style="display: none">
-          <div id="gameCodeDisplay">------</div>
-          <p id="lobbyStatus">Waiting for opponent...</p>
-          <button id="lobbyBackBtn2">← Cancel</button>
+          <p style="color: #aaa; margin: 0 0 15px 0">Game code:</p>
+          <div
+            id="gameCodeDisplay"
+            style="
+              font-size: 64px;
+              font-weight: bold;
+              color: #00ff00;
+              letter-spacing: 12px;
+              margin: 20px 0;
+              padding: 20px;
+              background: #1a1a1a;
+              border-radius: 8px;
+              user-select: all;
+            "
+          >
+            ----
+          </div>
+          <p id="lobbyStatus" style="color: #aaa; margin: 15px 0">
+            Waiting for opponent…
+          </p>
+          <button
+            id="lobbyBackBtn2"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: transparent;
+              color: #888;
+              border: none;
+              cursor: pointer;
+              margin-top: 15px;
+            "
+          >
+            ← Cancel
+          </button>
         </div>
         <div id="lobbyJoin" style="display: none">
-          <input id="joinCodeInput" type="text" maxlength="6" />
-          <p id="joinError">Error</p>
-          <button id="joinConfirmBtn">Join</button>
-          <button id="lobbyBackBtn3">← Back</button>
+          <p style="color: #aaa; margin: 0 0 15px 0">Enter game code:</p>
+          <input
+            id="joinCodeInput"
+            type="text"
+            maxlength="4"
+            style="
+              font-size: 32px;
+              font-weight: bold;
+              color: #00ff00;
+              background: #1a1a1a;
+              border: 2px solid #444;
+              border-radius: 5px;
+              padding: 12px;
+              text-align: center;
+              letter-spacing: 8px;
+              text-transform: uppercase;
+              width: 220px;
+              margin-bottom: 10px;
+            "
+          />
+          <p
+            id="joinError"
+            style="
+              color: #ff6666;
+              font-size: 14px;
+              margin: 8px 0;
+              display: none;
+            "
+          >
+            Error
+          </p>
+          <br />
+          <button
+            id="joinConfirmBtn"
+            style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: #00ff00;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 10px 5px;
+            "
+          >
+            Join
+          </button>
+          <button
+            id="lobbyBackBtn3"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: transparent;
+              color: #888;
+              border: none;
+              cursor: pointer;
+              margin-top: 5px;
+            "
+          >
+            ← Back
+          </button>
         </div>
       </div>
     </div>
@@ -496,6 +632,14 @@
       </div>
     </div>
 
+    <script type="importmap">
+      {
+        "imports": {
+          "firebase/app": "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
+          "firebase/database": "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js"
+        }
+      }
+    </script>
     <script type="module" src="./dist/main.js"></script>
   </body>
 </html>

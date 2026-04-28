@@ -1,12 +1,18 @@
-// Pattern Clash — Main entry point (Checkpoint C: local-only).
+// Pattern Clash — Main entry point.
 //
-// Online mode is temporarily disabled while the game is being rebuilt
-// around the 5-phase structure. It will be re-wired in a later step.
+// Lobby flow:
+//   - Local Game: starts a hotseat game with LocalSyncManager
+//   - Online Game: Create or Join via Firebase
+//       - Create: generates lobby code, waits for opponent
+//       - Join: prompts for code, claims player 2 slot
+//     Once both players are connected, the actual online game starts
+//     in Checkpoint 3. For now, we just confirm the connection.
 
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
 import { LocalSyncManager } from "./syncManager.js";
+import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
 import { CONFIG } from "./config.js";
 import { logInfo } from "./logger.js";
@@ -21,6 +27,13 @@ const game = new Game(ROWS, COLS);
 const renderer = new Renderer(dom.gameCanvas, CONFIG.CELL_SIZE, game);
 
 let uiController: UIController | null = null;
+let transport: FirebaseTransport | null = null;
+
+// Re-enable the online button (was disabled before Checkpoint 2).
+dom.onlineGameBtn.disabled = false;
+dom.onlineGameBtn.style.cursor = "pointer";
+dom.onlineGameBtn.style.opacity = "1";
+dom.onlineGameBtn.textContent = "Online Game";
 
 renderer.drawGrid();
 //#endregion
@@ -46,6 +59,11 @@ function startLocalGame(): void {
 }
 
 function showLobby(): void {
+  // Tear down any active online transport
+  if (transport) {
+    transport.disconnect();
+    transport = null;
+  }
   showLobbySection("lobbyModeSelect");
   dom.startOverlay.style.display = "flex";
 }
@@ -55,7 +73,91 @@ function showLobbySection(sectionId: string): void {
   dom.lobbyOnlineChoice.style.display = "none";
   dom.lobbyWaiting.style.display = "none";
   dom.lobbyJoin.style.display = "none";
-  document.getElementById(sectionId)!.style.display = "block";
+  const target = document.getElementById(sectionId);
+  if (target) target.style.display = "block";
+}
+//#endregion
+
+//#region Online Lobby
+async function onCreateGame(): Promise<void> {
+  transport = new FirebaseTransport();
+  try {
+    const code = await transport.createGame();
+    dom.gameCodeDisplay.textContent = code;
+    dom.lobbyStatus.textContent = "Waiting for opponent…";
+    showLobbySection("lobbyWaiting");
+
+    transport.onGameActive = () => {
+      logInfo("[Lobby] Both players connected — starting online game");
+      onOnlineGameReady();
+    };
+  } catch (err) {
+    logInfo("[Lobby] createGame failed:", err);
+    alert(
+      "Could not create online game. Check your internet connection or try again.",
+    );
+    transport.disconnect();
+    transport = null;
+    showLobbySection("lobbyModeSelect");
+  }
+}
+
+async function onJoinConfirm(): Promise<void> {
+  const rawCode = dom.joinCodeInput.value.trim().toUpperCase();
+  if (rawCode.length === 0) {
+    showJoinError("Please enter a game code");
+    return;
+  }
+
+  transport = new FirebaseTransport();
+  try {
+    const result = await transport.joinGame(rawCode);
+    if (!result.ok) {
+      showJoinError(result.error);
+      transport.disconnect();
+      transport = null;
+      return;
+    }
+    logInfo("[Lobby] Joined successfully — starting online game");
+    onOnlineGameReady();
+  } catch (err) {
+    logInfo("[Lobby] joinGame failed:", err);
+    showJoinError("Connection failed. Try again.");
+    transport?.disconnect();
+    transport = null;
+  }
+}
+
+function showJoinError(msg: string): void {
+  dom.joinError.textContent = msg;
+  dom.joinError.style.display = "block";
+  dom.joinError.style.color = "#ff6666";
+}
+
+// Called once both players are connected via Firebase.
+// Checkpoint 2 placeholder: just confirm the link is live.
+// Checkpoint 3: replace this with actual online game start.
+function onOnlineGameReady(): void {
+  if (!transport) return;
+  const me = transport.getLocalPlayer();
+  const code = transport.getGameCode();
+  alert(
+    `Online connection established.\n\n` +
+      `Game code: ${code}\nYou are Player ${me}\n\n` +
+      `(Online game flow comes in Checkpoint 3.)`,
+  );
+  // Disconnect for now — Checkpoint 3 will keep it alive.
+  transport.disconnect();
+  transport = null;
+  showLobbySection("lobbyModeSelect");
+}
+
+async function onCancelWaiting(): Promise<void> {
+  if (transport) {
+    await transport.cancelGame();
+    transport = null;
+  }
+  showLobbySection("lobbyOnlineChoice");
 }
 //#endregion
 
@@ -65,29 +167,30 @@ dom.localGameBtn.addEventListener("click", () => {
 });
 
 dom.onlineGameBtn.addEventListener("click", () => {
-  alert("Online mode is temporarily disabled while the game is being rebuilt.");
+  showLobbySection("lobbyOnlineChoice");
 });
 
-// Back buttons (kept wired so navigation works if online is re-enabled later)
+dom.createGameBtn.addEventListener("click", () => {
+  void onCreateGame();
+});
+dom.joinGameBtn.addEventListener("click", () => {
+  dom.joinCodeInput.value = "";
+  dom.joinError.style.display = "none";
+  showLobbySection("lobbyJoin");
+});
+dom.joinConfirmBtn.addEventListener("click", () => {
+  void onJoinConfirm();
+});
+
+// Back buttons
 dom.lobbyBackBtn1.addEventListener("click", () => {
   showLobbySection("lobbyModeSelect");
 });
 dom.lobbyBackBtn2.addEventListener("click", () => {
-  showLobbySection("lobbyOnlineChoice");
+  void onCancelWaiting();
 });
 dom.lobbyBackBtn3.addEventListener("click", () => {
   showLobbySection("lobbyOnlineChoice");
-});
-
-// Online create/join: no-ops during Checkpoint C.
-dom.createGameBtn.addEventListener("click", () => {
-  alert("Online mode is temporarily disabled.");
-});
-dom.joinGameBtn.addEventListener("click", () => {
-  alert("Online mode is temporarily disabled.");
-});
-dom.joinConfirmBtn.addEventListener("click", () => {
-  alert("Online mode is temporarily disabled.");
 });
 //#endregion
 
