@@ -177,9 +177,18 @@ dom.joinGameBtn.addEventListener("click", () => {
   dom.joinCodeInput.value = "";
   dom.joinError.style.display = "none";
   showLobbySection("lobbyJoin");
+  // Slight delay so the focus happens after the section becomes visible
+  // (focus on a hidden element is a no-op in some browsers).
+  setTimeout(() => dom.joinCodeInput.focus(), 0);
 });
 dom.joinConfirmBtn.addEventListener("click", () => {
   void onJoinConfirm();
+});
+
+dom.joinCodeInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    void onJoinConfirm();
+  }
 });
 
 // Back buttons
