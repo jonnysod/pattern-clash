@@ -5,6 +5,12 @@
 // The manager loops them back to onRemoteAction (which mutates Game),
 // so this controller has a single mutation entry point regardless of
 // whether the game is local hotseat or online.
+//
+// localPlayer: "both" (hotseat) — same browser controls both players,
+// pass-the-device overlays apply, and either side can click cards or
+// surrender. A Player value (1 | 2) — only that player can click their
+// own cards or surrender; the buy overlay opens immediately at the
+// start of each buy phase (no pass-the-device).
 
 import type { Player, SyncAction } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
@@ -19,17 +25,23 @@ import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 import { logInfo, logWarn } from "./logger.js";
 
+export type LocalPlayerMode = Player | "both";
+
 export class UIController {
   private game: Game;
   private dom: DOMRefs;
   private renderer: Renderer;
   private syncManager: SyncManager;
+  private localPlayer: LocalPlayerMode;
   private buyOverlay: BuyOverlay;
   private cardHand: CardHand;
   private scoreEffects: ScoreEffects;
   private cellSize: number;
 
-  // Buy phase: who still needs to buy (hotseat)
+  // Buy phase: who still needs to buy.
+  // Hotseat: starts as [1, 2], drained sequentially (with pass-the-device).
+  // Online: starts as [localPlayer], drained immediately on confirm.
+  //   The other player's confirm arrives via sync.
   private pendingBuyers: Player[] = [];
 
   // Place phase
@@ -49,29 +61,55 @@ export class UIController {
   // Restart callback (set by main.ts to return to the start overlay)
   onRestartRequested: (() => void) | null = null;
 
+  // Fired when the game reaches an end state (regular finish, surrender,
+  // or connection loss) — used by main.ts to clean up the Firebase
+  // game node. Fires exactly once per game.
+  onGameEnded: (() => void) | null = null;
+
+  private gameEndedFired: boolean = false;
+
   constructor(
     game: Game,
     dom: DOMRefs,
     renderer: Renderer,
     syncManager: SyncManager,
+    localPlayer: LocalPlayerMode,
     cellSize: number,
   ) {
     this.game = game;
     this.dom = dom;
     this.renderer = renderer;
     this.syncManager = syncManager;
+    this.localPlayer = localPlayer;
     this.cellSize = cellSize;
 
     this.buyOverlay = new BuyOverlay(game, dom);
     this.cardHand = new CardHand(game, dom.cardHand1, dom.cardHand2);
     this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
 
+    // Online: pin the visible player to the local player from the start
+    // so that buy-phase previews (and the eventual place-phase hand)
+    // are always face-up for the local player. Hotseat: visible
+    // follows active and gets updated in beginTurn().
+    if (localPlayer !== "both") {
+      this.cardHand.setVisiblePlayer(localPlayer);
+    }
+
     this.syncManager.onRemoteAction = (action) => this.applyAction(action);
+    this.syncManager.onConnectionLost = () => this.onConnectionLost();
     this.syncManager.start();
 
     this.wireEventHandlers();
     this.initialRender();
     this.startBuyPhase();
+  }
+
+  private isHotseat(): boolean {
+    return this.localPlayer === "both";
+  }
+
+  private isLocalPlayer(player: Player): boolean {
+    return this.localPlayer === "both" || this.localPlayer === player;
   }
 
   //#region Wiring
@@ -153,7 +191,15 @@ export class UIController {
       this.game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
     }
 
-    this.pendingBuyers = [1, 2];
+    // Hotseat: both players buy on this client (sequentially).
+    // Online: only the local player buys here; the opponent buys on
+    // their own client and arrives via sync.
+    if (this.isHotseat()) {
+      this.pendingBuyers = [1, 2];
+    } else if (this.localPlayer !== "both") {
+      this.pendingBuyers = [this.localPlayer];
+    }
+
     this.updateBudgetScoreDisplay();
     this.updateStatusBar();
     this.updateActivePlayerIndicator(null);
@@ -167,14 +213,16 @@ export class UIController {
   private promptNextBuyer(): void {
     const next = this.pendingBuyers[0];
     if (next === undefined) {
-      this.onAllBuysConfirmed();
+      this.onLocalBuysDone();
       return;
     }
 
-    if (this.pendingBuyers.length === 2) {
-      this.showBuyOverlay(next);
-    } else {
+    // Hotseat: show switch overlay before second buyer.
+    // Online: only one buyer in pendingBuyers, no switch needed.
+    if (this.isHotseat() && this.pendingBuyers.length === 1) {
       this.showSwitchOverlay(next);
+    } else {
+      this.showBuyOverlay(next);
     }
   }
 
@@ -210,14 +258,43 @@ export class UIController {
     this.promptNextBuyer();
   }
 
-  private onAllBuysConfirmed(): void {
-    this.game.finalizeBuyPhase();
-    this.startPlacePhase();
+  // All local buys submitted. In hotseat, this means both players confirmed.
+  // In online, we may still be waiting for the opponent's confirm.
+  //
+  // applyAction already handles the "both confirmed" transition for us
+  // (so an online remote confirm flips us to place phase). This method
+  // just shows the waiting indicator if we're still in buy phase.
+  private onLocalBuysDone(): void {
+    if (!this.game.isBuyPhase) {
+      // applyAction already finalized — nothing to do.
+      return;
+    }
+    // Still in buy phase → opponent hasn't confirmed yet (online only).
+    this.showWaitingForOpponent();
+  }
+
+  // Online: after local confirm, show "Waiting for opponent..." in the
+  // opponent's card hand slot. Show the local player's purchased cards
+  // (from the inventory, since the hand isn't built yet) in their slot,
+  // so they can see what they bought while waiting.
+  private showWaitingForOpponent(): void {
+    if (this.localPlayer === "both") return;
+    const opponent: Player = this.localPlayer === 1 ? 2 : 1;
+    this.cardHand.setWaiting(opponent, true);
+    this.cardHand.setPreview(this.localPlayer, true);
+  }
+
+  private hideWaitingForOpponent(): void {
+    this.cardHand.clearAllWaiting();
+    this.cardHand.clearAllPreview();
   }
   //#endregion
 
   //#region Place Phase
   private startPlacePhase(): void {
+    // Hide any "waiting for opponent" overlay from the buy phase
+    this.hideWaitingForOpponent();
+
     this.activePlacer = this.game.getPhaseStarter();
     this.hoverCol = null;
     this.hoverRow = null;
@@ -242,8 +319,19 @@ export class UIController {
     if (this.game.getHand(this.activePlacer).length === 0) {
       this.activePlacer = this.activePlacer === 1 ? 2 : 1;
     }
-    this.cardHand.setActivePlayer(this.activePlacer);
-    this.autoSelectFirstCard();
+    // Hotseat: visible follows active (cards swap on turn change).
+    // Online: visible stays pinned to local player.
+    if (this.localPlayer === "both") {
+      this.cardHand.setActivePlayer(this.activePlacer);
+    } else {
+      this.cardHand.setActiveAndVisible(this.activePlacer, this.localPlayer);
+    }
+    if (this.isLocalPlayer(this.activePlacer)) {
+      this.autoSelectFirstCard();
+    } else {
+      this.selectedCardId = null;
+      this.cardHand.setSelectedCard(null);
+    }
     this.updateActivePlayerIndicator(this.activePlacer);
     this.refreshHoverPreview();
   }
@@ -324,6 +412,8 @@ export class UIController {
 
   private onCanvasClick(e: MouseEvent): void {
     if (!this.game.isPlacePhase) return;
+    // Online: only the local player can click during their own turn.
+    if (!this.isLocalPlayer(this.activePlacer)) return;
     if (this.selectedCardId === null) return;
 
     const rect = this.dom.gameCanvas.getBoundingClientRect();
@@ -437,9 +527,29 @@ export class UIController {
   //#region Surrender
   private handleSurrender(player: Player): void {
     if (this.game.isEnded) return;
+    // Online: only allow surrendering as the local player
+    if (!this.isLocalPlayer(player)) return;
     const confirmed = window.confirm(`Player ${player}: surrender?`);
     if (!confirmed) return;
     this.syncManager.sendAction({ type: "surrender", player });
+  }
+  //#endregion
+
+  //#region Connection Loss (online only)
+  private onConnectionLost(): void {
+    if (this.game.isEnded) return;
+    logWarn("[Game] Opponent disconnected — ending game");
+    // Treat as opponent's surrender so local player wins.
+    const opponent: Player = this.localPlayer === 1 ? 2 : 1;
+    this.game.applySurrender(opponent);
+    this.buyOverlay.hide();
+    this.dom.switchOverlay.style.display = "none";
+    this.stopSimulation();
+    this.dom.winnerTitle.textContent = "Opponent disconnected";
+    this.dom.winnerTitle.style.color = "#ffaa00";
+    this.dom.winnerScore.textContent = `Score: ${this.game.scorePlayer1} — ${this.game.scorePlayer2}`;
+    this.dom.winnerOverlay.style.display = "flex";
+    this.fireGameEnded();
   }
   //#endregion
 
@@ -451,6 +561,17 @@ export class UIController {
     switch (action.type) {
       case "buyConfirm":
         this.game.applyBuyConfirm(action.player, action.cardCount);
+        // If this was the last confirm needed, advance to place phase.
+        // Hotseat: bothPlayersConfirmed becomes true after the second
+        // local buyer confirms — pendingBuyers is also empty, so the
+        // hotseat path through onLocalBuysDone is fine. We still call
+        // it here for correctness in case of timing edge cases.
+        // Online: the remote confirm arrives via this code path, so
+        // this is the canonical place to detect "both done" remotely.
+        if (this.game.bothPlayersConfirmed() && this.game.isBuyPhase) {
+          this.game.finalizeBuyPhase();
+          this.startPlacePhase();
+        }
         break;
 
       case "placement": {
@@ -507,6 +628,13 @@ export class UIController {
     this.dom.winnerScore.textContent = `Score: ${player1Score} — ${player2Score}${surrenderNote}`;
 
     this.dom.winnerOverlay.style.display = "flex";
+    this.fireGameEnded();
+  }
+
+  private fireGameEnded(): void {
+    if (this.gameEndedFired) return;
+    this.gameEndedFired = true;
+    if (this.onGameEnded) this.onGameEnded();
   }
   //#endregion
 

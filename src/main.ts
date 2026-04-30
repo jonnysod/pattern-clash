@@ -11,7 +11,7 @@
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
-import { LocalSyncManager } from "./syncManager.js";
+import { LocalSyncManager, OnlineSyncManager } from "./syncManager.js";
 import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
 import { CONFIG } from "./config.js";
@@ -50,6 +50,7 @@ function startLocalGame(): void {
     dom,
     renderer,
     syncManager,
+    "both", // hotseat
     CONFIG.CELL_SIZE,
   );
   uiController.onRestartRequested = () => {
@@ -135,21 +136,42 @@ function showJoinError(msg: string): void {
 }
 
 // Called once both players are connected via Firebase.
-// Checkpoint 2 placeholder: just confirm the link is live.
-// Checkpoint 3: replace this with actual online game start.
+// Starts the actual online game with OnlineSyncManager.
 function onOnlineGameReady(): void {
   if (!transport) return;
   const me = transport.getLocalPlayer();
-  const code = transport.getGameCode();
-  alert(
-    `Online connection established.\n\n` +
-      `Game code: ${code}\nYou are Player ${me}\n\n` +
-      `(Online game flow comes in Checkpoint 3.)`,
+  if (me === null) {
+    logInfo("[Lobby] onOnlineGameReady but no local player — aborting");
+    return;
+  }
+
+  dom.startOverlay.style.display = "none";
+  game.reset();
+  renderer.drawGrid();
+
+  const syncManager = new OnlineSyncManager(transport, me);
+  uiController = new UIController(
+    game,
+    dom,
+    renderer,
+    syncManager,
+    me,
+    CONFIG.CELL_SIZE,
   );
-  // Disconnect for now — Checkpoint 3 will keep it alive.
-  transport.disconnect();
-  transport = null;
-  showLobbySection("lobbyModeSelect");
+
+  // Cleanup the Firebase game node as soon as the game ends
+  // (regular finish, surrender, or connection loss).
+  uiController.onGameEnded = () => {
+    void transport?.cleanup();
+  };
+
+  // Return to lobby on restart click.
+  uiController.onRestartRequested = () => {
+    transport?.disconnect();
+    transport = null;
+    uiController = null;
+    showLobby();
+  };
 }
 
 async function onCancelWaiting(): Promise<void> {

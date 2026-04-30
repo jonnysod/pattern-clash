@@ -15,8 +15,30 @@ export class CardHand {
   private container1: HTMLDivElement;
   private container2: HTMLDivElement;
 
+  // Which player is currently allowed to click cards (the one whose
+  // turn it is in the place phase).
   private activePlayer: Player = 1;
+
+  // Which player's cards are face-up.
+  // Hotseat: always equal to activePlayer (cards swap visibility on
+  //          turn change).
+  // Online:  the local player; the opponent is always face-down.
+  private visiblePlayer: Player = 1;
+
   private selectedCardId: string | null = null;
+
+  // Players whose hand container should show a "waiting" message
+  // instead of the actual hand. Used during online buy phase to
+  // indicate the opponent hasn't confirmed yet.
+  private waitingPlayers: Set<Player> = new Set();
+
+  // Players whose container should show their *inventory* as cards,
+  // not the actual game hand. Used online during the gap between
+  // local buy-confirm and finalizeBuyPhase: the player has chosen
+  // their cards but they aren't in handPlayer* yet (waiting for the
+  // opponent to confirm). We render previews from the inventory so
+  // the player can see what they bought.
+  private previewPlayers: Set<Player> = new Set();
 
   // Fired when the active player clicks one of their cards.
   // A second click on the same card deselects it (selectedCardId=null).
@@ -35,6 +57,27 @@ export class CardHand {
   setActivePlayer(player: Player): void {
     this.activePlayer = player;
     this.selectedCardId = null;
+    // Hotseat default: visible follows active.
+    // (Online callers explicitly call setVisiblePlayer once after construction.)
+    this.visiblePlayer = player;
+    this.render();
+  }
+
+  // Online: pin which player's hand is shown face-up. Call once after
+  // construction; subsequent setActivePlayer will overwrite, so for
+  // online use, call this after each setActivePlayer too — or use the
+  // helper setActiveAndVisible.
+  setVisiblePlayer(player: Player): void {
+    this.visiblePlayer = player;
+    this.render();
+  }
+
+  // Set both at once. Used in online mode where visiblePlayer stays
+  // pinned to the local player but activePlayer alternates.
+  setActiveAndVisible(active: Player, visible: Player): void {
+    this.activePlayer = active;
+    this.visiblePlayer = visible;
+    this.selectedCardId = null;
     this.render();
   }
 
@@ -47,6 +90,39 @@ export class CardHand {
     return this.selectedCardId;
   }
 
+  // Mark a player's hand container as "waiting for the player to act"
+  // (renders a centered message instead of the hand). Used during
+  // online buy phase.
+  setWaiting(player: Player, waiting: boolean): void {
+    if (waiting) {
+      this.waitingPlayers.add(player);
+    } else {
+      this.waitingPlayers.delete(player);
+    }
+    this.render();
+  }
+
+  clearAllWaiting(): void {
+    this.waitingPlayers.clear();
+    this.render();
+  }
+
+  // Mark a player's container to render their inventory as cards.
+  // Used online between local buy-confirm and finalizeBuyPhase.
+  setPreview(player: Player, preview: boolean): void {
+    if (preview) {
+      this.previewPlayers.add(player);
+    } else {
+      this.previewPlayers.delete(player);
+    }
+    this.render();
+  }
+
+  clearAllPreview(): void {
+    this.previewPlayers.clear();
+    this.render();
+  }
+
   render(): void {
     this.renderPlayerHand(1, this.container1);
     this.renderPlayerHand(2, this.container2);
@@ -56,14 +132,37 @@ export class CardHand {
     this.container1.innerHTML = "";
     this.container2.innerHTML = "";
     this.selectedCardId = null;
+    this.waitingPlayers.clear();
+    this.previewPlayers.clear();
   }
 
   private renderPlayerHand(player: Player, container: HTMLDivElement): void {
     container.innerHTML = "";
-    const hand = this.game.getHand(player);
-    const isActive = player === this.activePlayer;
 
-    if (hand.length === 0) {
+    if (this.waitingPlayers.has(player)) {
+      const msg = document.createElement("div");
+      msg.textContent = "Waiting for opponent…";
+      msg.style.cssText =
+        "color: #888; font-size: 14px; padding: 30px 8px; " +
+        "text-align: center; width: 100%; font-style: italic;";
+      container.appendChild(msg);
+      return;
+    }
+
+    // Preview mode: render the inventory as fake cards. patternIndex
+    // is real (so the mini-preview draws correctly); id is synthetic
+    // (preview cards aren't selectable).
+    const isPreview = this.previewPlayers.has(player);
+    const cards: Card[] = isPreview
+      ? this.expandInventoryAsPreviewCards(player)
+      : this.game.getHand(player);
+
+    const isVisible = player === this.visiblePlayer;
+    // In preview mode, cards are non-clickable: the "active turn"
+    // notion only applies in place phase.
+    const isActive = !isPreview && player === this.activePlayer;
+
+    if (cards.length === 0) {
       const empty = document.createElement("div");
       empty.textContent = "— no cards —";
       empty.style.cssText = "color: #666; font-size: 13px; padding: 8px;";
@@ -71,15 +170,31 @@ export class CardHand {
       return;
     }
 
-    for (const card of hand) {
-      const el = this.createCardElement(card, player, isActive);
+    for (const card of cards) {
+      const el = this.createCardElement(card, player, isVisible, isActive);
       container.appendChild(el);
     }
+  }
+
+  private expandInventoryAsPreviewCards(player: Player): Card[] {
+    const inventory = this.game.getInventory(player);
+    const cards: Card[] = [];
+    let n = 0;
+    for (const entry of inventory) {
+      for (let i = 0; i < entry.count; i++) {
+        cards.push({
+          id: `preview-${player}-${n++}`,
+          patternIndex: entry.patternIndex,
+        });
+      }
+    }
+    return cards;
   }
 
   private createCardElement(
     card: Card,
     player: Player,
+    isVisible: boolean,
     isActive: boolean,
   ): HTMLDivElement {
     const playerColor =
@@ -108,8 +223,9 @@ export class CardHand {
       transition: transform 0.1s;
     `;
 
-    if (isActive) {
-      // Face up: mini preview + name
+    if (isVisible) {
+      // Face up: mini preview + name (only if pattern is resolved;
+      // placeholders have patternIndex = -1)
       const canvas = document.createElement("canvas");
       canvas.width = 56;
       canvas.height = 56;
@@ -125,19 +241,22 @@ export class CardHand {
         el.appendChild(nameEl);
       }
 
-      el.addEventListener("click", () => {
-        if (!this.onCardSelect) return;
-        // Toggle: clicking the same card deselects.
-        const next = this.selectedCardId === card.id ? null : card.id;
-        this.onCardSelect(next);
-      });
+      // Click only enabled if this player is also active
+      if (isActive) {
+        el.addEventListener("click", () => {
+          if (!this.onCardSelect) return;
+          // Toggle: clicking the same card deselects.
+          const next = this.selectedCardId === card.id ? null : card.id;
+          this.onCardSelect(next);
+        });
 
-      el.addEventListener("mouseenter", () => {
-        if (!isSelected) el.style.transform = "translateY(-4px)";
-      });
-      el.addEventListener("mouseleave", () => {
-        el.style.transform = "translateY(0)";
-      });
+        el.addEventListener("mouseenter", () => {
+          if (!isSelected) el.style.transform = "translateY(-4px)";
+        });
+        el.addEventListener("mouseleave", () => {
+          el.style.transform = "translateY(0)";
+        });
+      }
     } else {
       // Face down: solid back with player color
       const back = document.createElement("div");

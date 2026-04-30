@@ -3,32 +3,35 @@
 // Owns Realtime Database paths and primitive operations:
 // - createGame(): generate a code, write meta+player1
 // - joinGame(code): claim player2 slot, return success/failure
-// - listenForOpponent(): notifies when the second player joins
-// - disconnect(): cleanup
-//
-// Action streaming (placement/buyConfirm/surrender) is added in Checkpoint 3.
+// - listenForGameActive(): notifies when the second player joins
+// - sendAction(): append an action to the local player's stream
+// - subscribeToOpponentActions(): listen for actions from the opponent
+// - cleanup(): delete the game node (called at game end)
+// - disconnect(): tear down listeners (does not delete DB data)
 //
 // Schema (Realtime DB):
 //   games/{code}/
 //     meta:    { createdAt, status: "waiting"|"active"|"ended" }
 //     players: { 1: {connected: true}, 2: {connected: true|absent} }
-//     actions_p1: [...]    ← Checkpoint 3
-//     actions_p2: [...]    ← Checkpoint 3
+//     actions_p1: { -NkH3...: {action}, -NkH4...: {action} }
+//     actions_p2: { ... }
 
 import {
   ref,
   set,
   get,
+  push,
   onValue,
+  onChildAdded,
   off,
   serverTimestamp,
   onDisconnect,
   type Database,
   type DataSnapshot,
 } from "firebase/database";
-import type { Player } from "./types.js";
+import type { Player, SyncAction } from "./types.js";
 import { getFirebaseDb } from "./firebase.js";
-import { logInfo, logWarn } from "./logger.js";
+import { logInfo, logWarn, logDebug } from "./logger.js";
 
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // no I, O for readability
 const CODE_LENGTH = 4;
@@ -41,12 +44,16 @@ export class FirebaseTransport {
   private localPlayer: Player | null = null;
   private statusListenerPath: string | null = null;
   private statusUnsubscribe: (() => void) | null = null;
+  private actionsUnsubscribe: (() => void) | null = null;
 
   // Fires when the game transitions to "active" (both players connected).
   onGameActive: (() => void) | null = null;
 
   // Fires if the opponent disconnects mid-game.
   onOpponentDisconnect: (() => void) | null = null;
+
+  // Fires for each new action arriving from the opponent's stream.
+  onOpponentAction: ((action: SyncAction) => void) | null = null;
 
   constructor() {
     this.db = getFirebaseDb();
@@ -121,11 +128,15 @@ export class FirebaseTransport {
 
   // Permanently leave the game (cleanup local listeners).
   // Does NOT delete server data — that happens via onDisconnect handlers
-  // or by the creator's manual cancel.
+  // or by an explicit cleanup() call at game end.
   disconnect(): void {
     if (this.statusUnsubscribe) {
       this.statusUnsubscribe();
       this.statusUnsubscribe = null;
+    }
+    if (this.actionsUnsubscribe) {
+      this.actionsUnsubscribe();
+      this.actionsUnsubscribe = null;
     }
     this.statusListenerPath = null;
     this.gameCode = null;
@@ -137,6 +148,48 @@ export class FirebaseTransport {
     if (!this.gameCode || this.localPlayer !== 1) return;
     await set(ref(this.db, `games/${this.gameCode}`), null);
     this.disconnect();
+  }
+
+  // Append an action to the local player's stream. Push generates a
+  // unique key with embedded timestamp — concurrent pushes never
+  // collide. Returns void; we don't need the key.
+  async sendAction(action: SyncAction): Promise<void> {
+    if (!this.gameCode || !this.localPlayer) {
+      logWarn("[Firebase] sendAction called without active game");
+      return;
+    }
+    const path = `games/${this.gameCode}/actions_p${this.localPlayer}`;
+    await push(ref(this.db, path), action);
+    logDebug("[Firebase] sent action:", action);
+  }
+
+  // Subscribe to the opponent's action stream. Fires onOpponentAction
+  // for each action as it arrives, in insert order. Existing actions
+  // (from before subscription) are also delivered — relevant if a
+  // listener is attached after some actions have already been written.
+  subscribeToOpponentActions(): void {
+    if (!this.gameCode || !this.localPlayer) return;
+    const opponent = this.localPlayer === 1 ? 2 : 1;
+    const path = `games/${this.gameCode}/actions_p${opponent}`;
+    const actionsRef = ref(this.db, path);
+
+    const handler = (snap: DataSnapshot) => {
+      const action = snap.val() as SyncAction | null;
+      if (!action) return;
+      logDebug("[Firebase] received opponent action:", action);
+      if (this.onOpponentAction) this.onOpponentAction(action);
+    };
+    onChildAdded(actionsRef, handler);
+    this.actionsUnsubscribe = () => off(actionsRef, "child_added", handler);
+  }
+
+  // Delete the game node from the database. Called at game end.
+  // Idempotent — both clients may call this; second call is a no-op.
+  async cleanup(): Promise<void> {
+    if (!this.gameCode) return;
+    const code = this.gameCode;
+    await set(ref(this.db, `games/${code}`), null);
+    logInfo(`[Firebase] Game ${code} cleaned up`);
   }
 
   // ---- private ----
