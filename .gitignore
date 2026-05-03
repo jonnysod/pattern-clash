@@ -1,4 +1,30 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.DS_Store
+
+# Test output
 coverage/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs & runtime
+*.log
+npm-debug.log*
+.npm/
+
+# Local mailmaps, scratch files (defense-in-depth)
+mailmap.txt
+*.local
+.env
+.env.*
