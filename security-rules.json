@@ -1,0 +1,94 @@
+{
+  "rules": {
+    "games": {
+      "$gameCode": {
+        ".read": true,
+        ".write": true,
+        ".validate": "$gameCode.matches(/^[A-HJ-NP-Z]{4}$/)",
+
+        "meta": {
+          ".validate": "newData.hasChildren(['createdAt', 'status'])",
+          "createdAt": {
+            ".validate": "newData.isNumber() && (!data.exists() || data.val() == newData.val())"
+          },
+          "status": {
+            ".validate": "newData.isString() && newData.val().matches(/^(waiting|active)$/) && (!data.exists() || (data.val() == 'waiting' && newData.val() == 'active'))"
+          },
+          "$other": { ".validate": false }
+        },
+
+        "players": {
+          "$playerId": {
+            ".validate": "$playerId.matches(/^(1|2)$/) && newData.hasChild('connected')",
+            "connected": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "actions_p1": {
+          ".validate": "root.child('games/' + $gameCode + '/meta/status').val() == 'active' || !newData.exists()",
+          "$pushId": {
+            ".write": "!data.exists()",
+            ".validate": "newData.hasChildren(['type', 'player'])",
+            "type": {
+              ".validate": "newData.isString() && newData.val().matches(/^(buyConfirm|placement|surrender)$/)"
+            },
+            "player": {
+              ".validate": "newData.val() == 1"
+            },
+            "cardCount": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30"
+            },
+            "cardId": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "patternIndex": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() < 100"
+            },
+            "row": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 200"
+            },
+            "col": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 200"
+            },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "actions_p2": {
+          ".validate": "root.child('games/' + $gameCode + '/meta/status').val() == 'active' || !newData.exists()",
+          "$pushId": {
+            ".write": "!data.exists()",
+            ".validate": "newData.hasChildren(['type', 'player'])",
+            "type": {
+              ".validate": "newData.isString() && newData.val().matches(/^(buyConfirm|placement|surrender)$/)"
+            },
+            "player": {
+              ".validate": "newData.val() == 2"
+            },
+            "cardCount": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30"
+            },
+            "cardId": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "patternIndex": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() < 100"
+            },
+            "row": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 200"
+            },
+            "col": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 200"
+            },
+            "$other": { ".validate": false }
+          }
+        },
+
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
