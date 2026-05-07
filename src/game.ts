@@ -340,23 +340,32 @@ export class Game {
     return player === 1 ? this.buyConfirmedPlayer1 : this.buyConfirmedPlayer2;
   }
 
-  // Apply a buyConfirm action. Sets the confirmed flag and stores the
-  // declared cardCount. Idempotent: a second call for the same player
-  // is a no-op (protects against accidental double-apply).
+  // Apply a buyConfirm action. Sets the confirmed flag, stores the
+  // declared cardCount, and updates the player's budget to the declared
+  // remainder. Idempotent: a second call for the same player is a no-op
+  // (protects against accidental double-apply).
   //
   // Note: this client may or may not have the player's full inventory.
-  // - In hotseat, both players' inventories are local (set via buyPattern).
-  // - In online, only the local player's inventory is present;
-  //   the remote player's inventory stays empty here, and finalizeBuyPhase
-  //   uses cardCount instead to build placeholder cards.
-  applyBuyConfirm(player: Player, cardCount: number): void {
+  // - In hotseat, both players' inventories are local (set via buyPattern),
+  //   so remainingBudget equals the already-correct local budget (no-op).
+  // - In online, only the local player's inventory is present; the remote
+  //   player's inventory stays empty here, and finalizeBuyPhase uses
+  //   cardCount instead to build placeholder cards. remainingBudget is
+  //   how the remote opponent's budget gets updated to reflect their spend.
+  applyBuyConfirm(
+    player: Player,
+    cardCount: number,
+    remainingBudget: number,
+  ): void {
     if (this.isBuyConfirmed(player)) return;
     if (player === 1) {
       this.buyConfirmedPlayer1 = true;
       this.expectedHandSizePlayer1 = cardCount;
+      this.budgetPlayer1 = remainingBudget;
     } else {
       this.buyConfirmedPlayer2 = true;
       this.expectedHandSizePlayer2 = cardCount;
+      this.budgetPlayer2 = remainingBudget;
     }
   }
 
@@ -394,10 +403,7 @@ export class Game {
   // (online: this is the remote player whose inventory we never saw).
   // Either way, IDs come from the same _nextCardId counter, so they
   // match across clients.
-  private buildHand(
-    inventory: BuyInventoryEntry[],
-    cardCount: number,
-  ): Card[] {
+  private buildHand(inventory: BuyInventoryEntry[], cardCount: number): Card[] {
     if (inventory.length > 0) {
       return this.expandInventoryToHand(inventory);
     }

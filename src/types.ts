@@ -59,7 +59,12 @@ export interface Card {
 // arrives. This prevents leaking the opponent's full hand at confirm
 // time.
 export type SyncAction =
-  | { type: "buyConfirm"; player: Player; cardCount: number }
+  | {
+      type: "buyConfirm";
+      player: Player;
+      cardCount: number;
+      remainingBudget: number;
+    }
   | {
       type: "placement";
       player: Player;

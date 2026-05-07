@@ -247,13 +247,21 @@ export class UIController {
   }
 
   private onBuyConfirmed(player: Player): void {
-    // Snapshot cardCount BEFORE sending — applyBuyConfirm in the
-    // loopback consumes inventory state; here we just count slots.
+    // Snapshot cardCount and remainingBudget BEFORE sending. The remote
+    // client uses remainingBudget to update the opponent's displayed
+    // budget — without it, they'd never see the opponent's spend, since
+    // buyPattern() calls only run on the buyer's own client.
     const cardCount = this.game.getSlotCount(player);
+    const remainingBudget = this.game.getBudget(player);
     this.buyOverlay.hide();
     this.pendingBuyers = this.pendingBuyers.filter((p) => p !== player);
     // sendAction loops back to applyAction → game.applyBuyConfirm
-    this.syncManager.sendAction({ type: "buyConfirm", player, cardCount });
+    this.syncManager.sendAction({
+      type: "buyConfirm",
+      player,
+      cardCount,
+      remainingBudget,
+    });
     this.updateBudgetScoreDisplay();
     this.promptNextBuyer();
   }
@@ -560,7 +568,15 @@ export class UIController {
   private applyAction(action: SyncAction): void {
     switch (action.type) {
       case "buyConfirm":
-        this.game.applyBuyConfirm(action.player, action.cardCount);
+        this.game.applyBuyConfirm(
+          action.player,
+          action.cardCount,
+          action.remainingBudget,
+        );
+        // Refresh display so the opponent's updated budget shows up
+        // immediately on remote confirms (in addition to the local-confirm
+        // refresh already done by onBuyConfirmed).
+        this.updateBudgetScoreDisplay();
         // If this was the last confirm needed, advance to place phase.
         // Hotseat: bothPlayersConfirmed becomes true after the second
         // local buyer confirms — pendingBuyers is also empty, so the

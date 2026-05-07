@@ -41,6 +41,9 @@
             "cardCount": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30"
             },
+            "remainingBudget": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+            },
             "cardId": {
               ".validate": "newData.isString() && newData.val().length <= 16"
             },
@@ -70,6 +73,9 @@
             },
             "cardCount": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30"
+            },
+            "remainingBudget": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
             },
             "cardId": {
               ".validate": "newData.isString() && newData.val().length <= 16"

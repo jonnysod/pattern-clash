@@ -92,10 +92,10 @@ describe("Game — Buy Logic", () => {
 
   it("applyBuyConfirm sets the flag and bothPlayersConfirmed reflects state", () => {
     expect(game.bothPlayersConfirmed()).toBe(false);
-    game.applyBuyConfirm(1, 0);
+    game.applyBuyConfirm(1, 0, INITIAL_BUDGET);
     expect(game.isBuyConfirmed(1)).toBe(true);
     expect(game.bothPlayersConfirmed()).toBe(false);
-    game.applyBuyConfirm(2, 0);
+    game.applyBuyConfirm(2, 0, INITIAL_BUDGET);
     expect(game.bothPlayersConfirmed()).toBe(true);
   });
 
@@ -105,8 +105,8 @@ describe("Game — Buy Logic", () => {
     game.buyPattern(1, BLINKER_INDEX);
     game.buyPattern(2, LWSS_INDEX);
 
-    game.applyBuyConfirm(1, 3);
-    game.applyBuyConfirm(2, 1);
+    game.applyBuyConfirm(1, 3, game.getBudget(1));
+    game.applyBuyConfirm(2, 1, game.getBudget(2));
     game.finalizeBuyPhase();
 
     expect(game.getHand(1)).toHaveLength(3);
@@ -130,8 +130,8 @@ describe("Game — Buy Logic", () => {
     // Simulate the online case for player 2: this client has no
     // local inventory for P2, only the cardCount that arrived via sync.
     game.buyPattern(1, BLOCK_INDEX);
-    game.applyBuyConfirm(1, 1);
-    game.applyBuyConfirm(2, 4); // remote, no inventory
+    game.applyBuyConfirm(1, 1, game.getBudget(1));
+    game.applyBuyConfirm(2, 4, INITIAL_BUDGET - 30); // remote, no inventory
     game.finalizeBuyPhase();
 
     expect(game.getHand(1)).toHaveLength(1);
@@ -226,8 +226,8 @@ describe("Game — Place Logic", () => {
   it("applyPlacement resolves a placeholder card's patternIndex", () => {
     // Build a hand with a placeholder for player 2 (online-style)
     game.buyPattern(1, BLOCK_INDEX);
-    game.applyBuyConfirm(1, 1);
-    game.applyBuyConfirm(2, 1);
+    game.applyBuyConfirm(1, 1, game.getBudget(1));
+    game.applyBuyConfirm(2, 1, INITIAL_BUDGET);
     game.finalizeBuyPhase();
 
     const placeholder = game.getHand(2)[0]!;
@@ -245,8 +245,8 @@ describe("Game — Place Logic", () => {
 
   it("applyPlacement rejects unknown cardId", () => {
     game.buyPattern(1, BLOCK_INDEX);
-    game.applyBuyConfirm(1, 1);
-    game.applyBuyConfirm(2, 0);
+    game.applyBuyConfirm(1, 1, game.getBudget(1));
+    game.applyBuyConfirm(2, 0, INITIAL_BUDGET);
     game.finalizeBuyPhase();
     const ok = game.applyPlacement(1, "nonexistent", BLOCK_INDEX, 20, 10);
     expect(ok).toBe(false);
@@ -254,8 +254,8 @@ describe("Game — Place Logic", () => {
 
   it("applyPlacement rejects placement in opponent zone (does not consume card)", () => {
     game.buyPattern(1, BLOCK_INDEX);
-    game.applyBuyConfirm(1, 1);
-    game.applyBuyConfirm(2, 0);
+    game.applyBuyConfirm(1, 1, game.getBudget(1));
+    game.applyBuyConfirm(2, 0, INITIAL_BUDGET);
     game.finalizeBuyPhase();
 
     const card = game.getHand(1)[0]!;

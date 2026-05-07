@@ -10,7 +10,7 @@ describe("LocalSyncManager", () => {
     const received: SyncAction[] = [];
     sync.onRemoteAction = (action) => received.push(action);
 
-    const action: SyncAction = { type: "buyConfirm", player: 1, cardCount: 3 };
+    const action: SyncAction = { type: "buyConfirm", player: 1, cardCount: 3, remainingBudget: 50 };
     sync.sendAction(action);
 
     expect(received).toHaveLength(1);
@@ -20,7 +20,7 @@ describe("LocalSyncManager", () => {
   it("does nothing when onRemoteAction is unset", () => {
     const sync = new LocalSyncManager();
     expect(() =>
-      sync.sendAction({ type: "buyConfirm", player: 1, cardCount: 0 }),
+      sync.sendAction({ type: "buyConfirm", player: 1, cardCount: 0 , remainingBudget: 90}),
     ).not.toThrow();
   });
 
@@ -30,8 +30,8 @@ describe("LocalSyncManager", () => {
     sync.onRemoteAction = (a) => received.push(a);
 
     const actions: SyncAction[] = [
-      { type: "buyConfirm", player: 1, cardCount: 2 },
-      { type: "buyConfirm", player: 2, cardCount: 1 },
+      { type: "buyConfirm", player: 1, cardCount: 2, remainingBudget: 80 },
+      { type: "buyConfirm", player: 2, cardCount: 1, remainingBudget: 87 },
       {
         type: "placement",
         player: 1,
