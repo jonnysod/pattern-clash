@@ -29,4 +29,10 @@ export const CONFIG = {
   COLOR_ZONE_SCORE: "#443300",
   COLOR_GRID_LINE: "#222",
   COLOR_ZONE_BORDER: "#666",
+
+  // Score bucket aggregation (delays score crediting so the displayed
+  // "+N" floating text matches the actual point award)
+  SCORE_BUCKET_REGION_SIZE: 5, // Cells grouped into one score region
+  SCORE_BUCKET_SILENCE_LIMIT: 3, // Generations without new hits in a region → flush
+  SCORE_BUCKET_AGE_LIMIT: 15, // Max generations a bucket can grow → force flush
 } as const;

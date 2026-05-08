@@ -1,26 +1,24 @@
-// Score effects: floating "+N" text over the game canvas
-// Aggregates nearby score events to avoid visual clutter.
+// Score effects: floating "+N" text over the game canvas.
+// Each ScoreEvent fed in produces one floating text — aggregation
+// already happened upstream in Game.scoreBuckets, so the displayed
+// numbers match the actual point award exactly.
 
-import type { Player, ScoreEvent } from "./types.js";
+import type { ScoreEvent } from "./types.js";
 import { CONFIG } from "./config.js";
 
-const REGION_SIZE = 5; // Cells to group into one region
 const FLOAT_DURATION = 1500; // ms for float + fade
 const FLOAT_DISTANCE = 40; // px to float upward
 
-interface ActiveEffect {
+interface EffectHandle {
   element: HTMLDivElement;
-  totalPoints: number;
-  scorer: Player;
   timeoutId: number;
-  regionKey: string;
 }
 
 export class ScoreEffects {
   private container: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cellSize: number;
-  private activeEffects: Map<string, ActiveEffect> = new Map();
+  private activeEffects: Set<EffectHandle> = new Set();
 
   constructor(canvas: HTMLCanvasElement, cellSize: number) {
     this.canvas = canvas;
@@ -45,41 +43,16 @@ export class ScoreEffects {
     wrapper.appendChild(this.container);
   }
 
-  // Feed score events from a generation
+  // Feed score events from a generation. Each event becomes its own
+  // floating text — Game already aggregated nearby hits into one
+  // event per bucket flush, so there's nothing more to do here.
   feed(events: ScoreEvent[]): void {
-    // Aggregate points per region within this frame
-    const frameRegions = new Map<
-      string,
-      { event: ScoreEvent; total: number }
-    >();
-
     for (const event of events) {
-      const regionKey = this.getRegionKey(event.row, event.col, event.scorer);
-      const entry = frameRegions.get(regionKey);
-      if (entry) {
-        entry.total += event.points;
-      } else {
-        frameRegions.set(regionKey, { event, total: event.points });
-      }
-    }
-
-    for (const [regionKey, { event, total }] of frameRegions) {
-      const existing = this.activeEffects.get(regionKey);
-      if (existing) {
-        // Previous animation still running — let it finish, skip this frame
-        continue;
-      }
-      this.createEffect({ ...event, points: total }, regionKey);
+      this.createEffect(event);
     }
   }
 
-  private getRegionKey(row: number, col: number, scorer: Player): string {
-    const regionRow = Math.floor(row / REGION_SIZE);
-    const regionCol = Math.floor(col / REGION_SIZE);
-    return `${scorer}-${regionRow}-${regionCol}`;
-  }
-
-  private createEffect(event: ScoreEvent, regionKey: string): void {
+  private createEffect(event: ScoreEvent): void {
     const el = document.createElement("div");
     const x = event.col * this.cellSize;
     const y = event.row * this.cellSize;
@@ -111,31 +84,20 @@ export class ScoreEffects {
       el.style.opacity = "0";
     });
 
-    const timeoutId = window.setTimeout(() => {
-      this.removeEffect(regionKey);
+    // Self-removing handle: when the timeout fires, the element is
+    // detached and the handle removes itself from the active set.
+    const handle: EffectHandle = { element: el, timeoutId: 0 };
+    handle.timeoutId = window.setTimeout(() => {
+      el.remove();
+      this.activeEffects.delete(handle);
     }, FLOAT_DURATION);
-
-    this.activeEffects.set(regionKey, {
-      element: el,
-      totalPoints: event.points,
-      scorer: event.scorer,
-      regionKey,
-      timeoutId,
-    });
-  }
-
-  private removeEffect(regionKey: string): void {
-    const effect = this.activeEffects.get(regionKey);
-    if (effect) {
-      effect.element.remove();
-      this.activeEffects.delete(regionKey);
-    }
+    this.activeEffects.add(handle);
   }
 
   clear(): void {
-    for (const effect of this.activeEffects.values()) {
-      clearTimeout(effect.timeoutId);
-      effect.element.remove();
+    for (const handle of this.activeEffects) {
+      clearTimeout(handle.timeoutId);
+      handle.element.remove();
     }
     this.activeEffects.clear();
   }

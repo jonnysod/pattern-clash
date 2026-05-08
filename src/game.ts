@@ -21,6 +21,23 @@ const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
   ended: ["tactical-buy"], // restart
 };
 
+// A pending score bucket. Score isn't credited the moment a cell
+// reaches the endzone — it accumulates here. The bucket flushes when
+// the stream goes quiet (silenceCounter >= SCORE_BUCKET_SILENCE_LIMIT)
+// or has grown for too long (ageCounter >= SCORE_BUCKET_AGE_LIMIT),
+// at which point its points are credited and a single ScoreEvent is
+// emitted. This keeps the displayed "+N" text in sync with the actual
+// point award — they're the same event.
+interface ScoreBucket {
+  scorer: Player;
+  points: number;
+  // Position of the most recent hit — where the floating "+N" appears.
+  row: number;
+  col: number;
+  silenceCounter: number; // generations since last hit in this region (0 on hit)
+  ageCounter: number; // generations since bucket creation (never resets)
+}
+
 export class Game {
   readonly rows: number;
   readonly cols: number;
@@ -66,8 +83,13 @@ export class Game {
   // Surrender tracking
   surrenderedPlayer: Player | null = null;
 
-  // Score events from last generation (consumed by UI each frame)
+  // Score events from last generation (consumed by UI each frame).
+  // Populated only when buckets flush, not on every individual hit.
   scoreEvents: ScoreEvent[] = [];
+
+  // Pending score buckets, keyed by `scorer-regionRow-regionCol`.
+  // See ScoreBucket interface above for the flush rules.
+  private scoreBuckets: Map<string, ScoreBucket> = new Map();
 
   // Internal counter for unique card IDs
   private _nextCardId: number = 1;
@@ -157,6 +179,7 @@ export class Game {
     this.handPlayer2 = [];
     this.surrenderedPlayer = null;
     this.scoreEvents = [];
+    this.scoreBuckets.clear();
     this._nextCardId = 1;
   }
   //#endregion
@@ -167,7 +190,10 @@ export class Game {
     this.scoreEvents = [];
 
     const newGrid: boolean[][] = this.createEmptyGrid();
+    const hitsThisTick = new Set<string>();
 
+    // 1. Conway step. Cells born in a score zone don't credit points
+    //    immediately — they accumulate into a regional bucket.
     for (let row = 0; row < this.rows; row++) {
       for (let col = 0; col < this.cols; col++) {
         const neighbors = this.countNeighbors(row, col);
@@ -180,23 +206,93 @@ export class Game {
 
           const scoreResult = this.zones.isScoreCell(row, col);
           if (scoreResult.scores && scoreResult.scorer) {
-            if (scoreResult.scorer === 1) {
-              this.scorePlayer1 += CONFIG.SCORE_POINTS;
-            } else {
-              this.scorePlayer2 += CONFIG.SCORE_POINTS;
+            const scorer = scoreResult.scorer;
+            const key = this.regionKey(row, col, scorer);
+            hitsThisTick.add(key);
+            let bucket = this.scoreBuckets.get(key);
+            if (!bucket) {
+              bucket = {
+                scorer,
+                points: 0,
+                row,
+                col,
+                silenceCounter: 0,
+                ageCounter: 0,
+              };
+              this.scoreBuckets.set(key, bucket);
             }
-            this.scoreEvents.push({
-              row,
-              col,
-              scorer: scoreResult.scorer,
-              points: CONFIG.SCORE_POINTS,
-            });
+            bucket.points += CONFIG.SCORE_POINTS;
+            // Track most recent hit position — that's where the
+            // floating "+N" will pop on flush.
+            bucket.row = row;
+            bucket.col = col;
           }
         }
       }
     }
 
     this.grid = newGrid;
+
+    // 2. Decay phase. Bump silence/age counters on every existing
+    //    bucket, mark expired ones for flush.
+    //    Atomic-tick semantics: this runs *after* all hits are
+    //    collected, so a tick that both adds to a bucket AND ages it
+    //    past the cap flushes the bucket *with* the current tick's
+    //    points included.
+    const expiredKeys: string[] = [];
+    for (const [key, bucket] of this.scoreBuckets) {
+      if (hitsThisTick.has(key)) {
+        bucket.silenceCounter = 0;
+      } else {
+        bucket.silenceCounter++;
+      }
+      bucket.ageCounter++;
+
+      if (
+        bucket.silenceCounter >= CONFIG.SCORE_BUCKET_SILENCE_LIMIT ||
+        bucket.ageCounter >= CONFIG.SCORE_BUCKET_AGE_LIMIT
+      ) {
+        expiredKeys.push(key);
+      }
+    }
+    for (const key of expiredKeys) {
+      const bucket = this.scoreBuckets.get(key)!;
+      this.creditAndEmit(bucket);
+      this.scoreBuckets.delete(key);
+    }
+
+    // 3. End-of-simulation force-flush. Anything still pending gets
+    //    credited and visualized on the final tick — otherwise points
+    //    would be silently dropped.
+    if (this.currentGeneration >= this.simGenerations) {
+      for (const bucket of this.scoreBuckets.values()) {
+        this.creditAndEmit(bucket);
+      }
+      this.scoreBuckets.clear();
+    }
+  }
+
+  private regionKey(row: number, col: number, scorer: Player): string {
+    const r = Math.floor(row / CONFIG.SCORE_BUCKET_REGION_SIZE);
+    const c = Math.floor(col / CONFIG.SCORE_BUCKET_REGION_SIZE);
+    return `${scorer}-${r}-${c}`;
+  }
+
+  // Credit a bucket's points to its scorer and emit a ScoreEvent so
+  // the UI can render the floating text. Caller is responsible for
+  // removing the bucket from the map.
+  private creditAndEmit(bucket: ScoreBucket): void {
+    if (bucket.scorer === 1) {
+      this.scorePlayer1 += bucket.points;
+    } else {
+      this.scorePlayer2 += bucket.points;
+    }
+    this.scoreEvents.push({
+      row: bucket.row,
+      col: bucket.col,
+      scorer: bucket.scorer,
+      points: bucket.points,
+    });
   }
 
   private countNeighbors(row: number, col: number): number {

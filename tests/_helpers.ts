@@ -14,3 +14,14 @@ export function makeGame(): Game {
 export const BLOCK_INDEX = 2; // PATTERNS[2] = Block (4 cells)
 export const BLINKER_INDEX = 5; // PATTERNS[5] = Blinker (3 cells)
 export const LWSS_INDEX = 0; // PATTERNS[0] = LWSS (9 cells)
+
+// Set every cell in the grid to dead. Useful in score tests where you
+// want to plant a single Conway pattern, run one tick to score, and
+// then guarantee no further births by clearing everything.
+export function clearGrid(game: Game): void {
+  for (let r = 0; r < game.rows; r++) {
+    for (let c = 0; c < game.cols; c++) {
+      game.grid[r]![c] = false;
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { Game } from "../src/game.js";
 import { CONFIG } from "../src/config.js";
 import { PATTERNS } from "../src/patterns.js";
 import {
+  clearGrid,
   makeGame,
   TEST_ROWS,
   TEST_COLS,
@@ -50,7 +51,14 @@ describe("Game — Buy Logic", () => {
     game.budgetPlayer1 = 1000;
     for (let i = 0; i < CONFIG.MAX_SLOTS; i++) {
       // Cycle through a few patterns to avoid hitting copy limit
-      const idx = i % 4 === 0 ? BLINKER_INDEX : i % 4 === 1 ? BLOCK_INDEX : i % 4 === 2 ? 3 : 4;
+      const idx =
+        i % 4 === 0
+          ? BLINKER_INDEX
+          : i % 4 === 1
+            ? BLOCK_INDEX
+            : i % 4 === 2
+              ? 3
+              : 4;
       game.buyPattern(1, idx);
     }
     expect(game.getSlotCount(1)).toBe(CONFIG.MAX_SLOTS);
@@ -235,7 +243,13 @@ describe("Game — Place Logic", () => {
 
     // Apply remote placement action — patternIndex arrives in the action.
     const startCol = game.zones.rightStart + 5;
-    const ok = game.applyPlacement(2, placeholder.id, BLOCK_INDEX, 20, startCol);
+    const ok = game.applyPlacement(
+      2,
+      placeholder.id,
+      BLOCK_INDEX,
+      20,
+      startCol,
+    );
     expect(ok).toBe(true);
     // Card removed from hand after successful placement
     expect(game.getHand(2)).toHaveLength(0);
@@ -305,7 +319,19 @@ describe("Game — Simulation & Scoring", () => {
     const beforeScore = game.scorePlayer1;
     game.computeNextGeneration();
 
+    // Cell is born in the score zone, but the point isn't credited
+    // yet — it's pending in a bucket.
     expect(game.grid[50]![sc]).toBe(true);
+    expect(game.scorePlayer1).toBe(beforeScore);
+    expect(game.scoreEvents).toHaveLength(0);
+
+    // Clear the grid so no further hits hit this region; bucket flushes
+    // after SILENCE_LIMIT generations of quiet.
+    clearGrid(game);
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_SILENCE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
+
     expect(game.scorePlayer1).toBe(beforeScore + CONFIG.SCORE_POINTS);
     expect(game.scoreEvents).toHaveLength(1);
     expect(game.scoreEvents[0]).toMatchObject({
@@ -324,6 +350,13 @@ describe("Game — Simulation & Scoring", () => {
 
     game.computeNextGeneration();
     expect(game.grid[50]![sc]).toBe(true);
+    // Score not yet credited — flush after silence
+    expect(game.scorePlayer2).toBe(0);
+
+    clearGrid(game);
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_SILENCE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
     expect(game.scorePlayer2).toBe(CONFIG.SCORE_POINTS);
     expect(game.scoreEvents[0]?.scorer).toBe(2);
   });
@@ -338,18 +371,120 @@ describe("Game — Simulation & Scoring", () => {
   });
 
   it("scoreEvents is reset at the start of each generation", () => {
+    // Prime a bucket flush so scoreEvents has something in it.
+    const sc = game.zones.scoreColumnRight;
+    game.grid[49]![sc - 1] = true;
+    game.grid[50]![sc - 1] = true;
+    game.grid[51]![sc - 1] = true;
+    game.computeNextGeneration();
+    clearGrid(game);
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_SILENCE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
+    expect(game.scoreEvents.length).toBeGreaterThan(0);
+
+    // Next gen with empty grid: no births anywhere, scoreEvents resets.
+    game.computeNextGeneration();
+    expect(game.scoreEvents).toEqual([]);
+  });
+
+  it("score is not credited on the hit-tick — only on flush", () => {
     const sc = game.zones.scoreColumnRight;
     game.grid[49]![sc - 1] = true;
     game.grid[50]![sc - 1] = true;
     game.grid[51]![sc - 1] = true;
 
     game.computeNextGeneration();
-    expect(game.scoreEvents.length).toBeGreaterThan(0);
-
-    // Next gen: nothing scoring expected (the original 3 cells are now
-    // mostly dead; we don't assert what's left, just that scoreEvents resets).
-    game.computeNextGeneration();
+    // Hit landed but bucket still pending: score unchanged, no event.
+    expect(game.scorePlayer1).toBe(0);
     expect(game.scoreEvents).toEqual([]);
+  });
+
+  it("multiple hits in the same region aggregate into one ScoreEvent on flush", () => {
+    const sc = game.zones.scoreColumnRight;
+    // Tick A: score (50, sc) via vertical blinker on sc-1
+    game.grid[49]![sc - 1] = true;
+    game.grid[50]![sc - 1] = true;
+    game.grid[51]![sc - 1] = true;
+    game.computeNextGeneration();
+    // Tick B: re-prime same region with another blinker setup so a
+    // second hit lands within the same regionKey.
+    clearGrid(game);
+    game.grid[52]![sc - 1] = true;
+    game.grid[53]![sc - 1] = true;
+    game.grid[54]![sc - 1] = true;
+    game.computeNextGeneration();
+
+    // Now go silent for SILENCE_LIMIT generations to trigger flush.
+    clearGrid(game);
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_SILENCE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
+
+    // Both hits aggregated into one event with combined points.
+    expect(game.scorePlayer1).toBe(2 * CONFIG.SCORE_POINTS);
+    expect(game.scoreEvents).toHaveLength(1);
+    expect(game.scoreEvents[0]?.points).toBe(2 * CONFIG.SCORE_POINTS);
+  });
+
+  it("hits in different regions go to separate buckets and emit separate events", () => {
+    const sc = game.zones.scoreColumnRight;
+    // Two hits far apart vertically — well beyond SCORE_BUCKET_REGION_SIZE.
+    // Region 1: around row 10
+    game.grid[9]![sc - 1] = true;
+    game.grid[10]![sc - 1] = true;
+    game.grid[11]![sc - 1] = true;
+    // Region 2: around row 50
+    game.grid[49]![sc - 1] = true;
+    game.grid[50]![sc - 1] = true;
+    game.grid[51]![sc - 1] = true;
+
+    game.computeNextGeneration();
+    clearGrid(game);
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_SILENCE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
+
+    // Two separate events, one per region.
+    expect(game.scoreEvents).toHaveLength(2);
+    expect(game.scorePlayer1).toBe(2 * CONFIG.SCORE_POINTS);
+  });
+
+  it("a continuously-fed bucket force-flushes once it reaches AGE_LIMIT", () => {
+    const sc = game.zones.scoreColumnRight;
+    // Vertical blinker keeps oscillating — every other tick births a
+    // cell at (50, sc), so the bucket gets re-hit before silence ever
+    // hits SILENCE_LIMIT. Only the age cap can flush this stream.
+    game.grid[49]![sc - 1] = true;
+    game.grid[50]![sc - 1] = true;
+    game.grid[51]![sc - 1] = true;
+
+    // Run up to the age limit. Score must have flushed at least once.
+    for (let i = 0; i < CONFIG.SCORE_BUCKET_AGE_LIMIT; i++) {
+      game.computeNextGeneration();
+    }
+    expect(game.scorePlayer1).toBeGreaterThan(0);
+  });
+
+  it("simulation end force-flushes any pending bucket", () => {
+    // Set up a pending bucket just before the last tick, then run the
+    // last tick with a quiet grid. The bucket would normally still be
+    // pending (silence < SILENCE_LIMIT), but end-of-sim flushes it.
+    const sc = game.zones.scoreColumnRight;
+    game.grid[49]![sc - 1] = true;
+    game.grid[50]![sc - 1] = true;
+    game.grid[51]![sc - 1] = true;
+    game.computeNextGeneration(); // bucket created, score still 0
+    expect(game.scorePlayer1).toBe(0);
+
+    clearGrid(game);
+    // Jump currentGeneration to one tick before the end.
+    game.currentGeneration = game.simGenerations - 1;
+    game.computeNextGeneration();
+
+    expect(game.isSimulationComplete()).toBe(true);
+    expect(game.scorePlayer1).toBe(CONFIG.SCORE_POINTS);
+    expect(game.scoreEvents).toHaveLength(1);
   });
 });
 
