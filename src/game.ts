@@ -1,4 +1,6 @@
-// Game state, Conway's Game of Life logic, and phase management.
+// Game state, phase management, buy/place logic.
+// Conway simulation, grid operations, and score-bucket aggregation are
+// delegated to Engine (src/engine.ts).
 
 import type {
   Pattern,
@@ -12,6 +14,7 @@ import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
 import { CONFIG } from "./config.js";
 import { getPatternForPlayer } from "./patternUtils.js";
+import { Engine } from "./engine.js";
 
 // Valid phase transitions
 const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
@@ -21,36 +24,17 @@ const VALID_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
   ended: ["tactical-buy"], // restart
 };
 
-// A pending score bucket. Score isn't credited the moment a cell
-// reaches the endzone — it accumulates here. The bucket flushes when
-// the stream goes quiet (silenceCounter >= SCORE_BUCKET_SILENCE_LIMIT)
-// or has grown for too long (ageCounter >= SCORE_BUCKET_AGE_LIMIT),
-// at which point its points are credited and a single ScoreEvent is
-// emitted. This keeps the displayed "+N" text in sync with the actual
-// point award — they're the same event.
-interface ScoreBucket {
-  scorer: Player;
-  points: number;
-  // Position of the most recent hit — where the floating "+N" appears.
-  row: number;
-  col: number;
-  silenceCounter: number; // generations since last hit in this region (0 on hit)
-  ageCounter: number; // generations since bucket creation (never resets)
-}
-
 export class Game {
   readonly rows: number;
   readonly cols: number;
   readonly zones: Zones;
 
-  grid: boolean[][];
+  private engine: Engine;
 
   // Phase state
   private _phase: GamePhase = "tactical-buy";
   currentPhaseNumber: number = 1;
   readonly totalPhases: number = CONFIG.PHASE_COUNT;
-  currentGeneration: number = 0;
-  readonly simGenerations: number = CONFIG.SIM_GENERATIONS;
 
   // Score (win metric, decoupled from budget)
   scorePlayer1: number = 0;
@@ -83,14 +67,6 @@ export class Game {
   // Surrender tracking
   surrenderedPlayer: Player | null = null;
 
-  // Score events from last generation (consumed by UI each frame).
-  // Populated only when buckets flush, not on every individual hit.
-  scoreEvents: ScoreEvent[] = [];
-
-  // Pending score buckets, keyed by `scorer-regionRow-regionCol`.
-  // See ScoreBucket interface above for the flush rules.
-  private scoreBuckets: Map<string, ScoreBucket> = new Map();
-
   // Internal counter for unique card IDs
   private _nextCardId: number = 1;
 
@@ -98,8 +74,37 @@ export class Game {
     this.rows = rows;
     this.cols = cols;
     this.zones = new Zones(cols, rows);
-    this.grid = this.createEmptyGrid();
+    this.engine = new Engine(rows, cols, this.zones, CONFIG.SIM_GENERATIONS);
   }
+
+  //#region Engine delegation
+  // grid is owned by the engine. Exposed as a getter so existing callers
+  // (ui.ts, tests, rendering) keep working without changes. Direct cell
+  // writes (e.g. game.grid[r][c] = true) still work because the getter
+  // returns the live array reference — mutation, not reassignment.
+  get grid(): boolean[][] {
+    return this.engine.grid;
+  }
+
+  // currentGeneration is owned by the engine. The setter lets tests and
+  // advanceAfterSimulation() assign to it directly.
+  get currentGeneration(): number {
+    return this.engine.currentGeneration;
+  }
+  set currentGeneration(v: number) {
+    this.engine.currentGeneration = v;
+  }
+
+  get simGenerations(): number {
+    return this.engine.simGenerations;
+  }
+
+  // scoreEvents are produced by the engine each tick. Getter returns the
+  // live reference — callers read it after computeNextGeneration().
+  get scoreEvents(): ScoreEvent[] {
+    return this.engine.scoreEvents;
+  }
+  //#endregion
 
   //#region Phase State Machine
   get phase(): GamePhase {
@@ -136,33 +141,11 @@ export class Game {
   }
   //#endregion
 
-  //#region Grid
-  private createEmptyGrid(): boolean[][] {
-    return Array(this.rows)
-      .fill(null)
-      .map(() => Array(this.cols).fill(false));
-  }
-
-  // Fast grid hash (kept for future sync debugging)
-  gridHash(): number {
-    let hash = 0;
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) {
-        if (this.grid[row]![col]) {
-          hash = (hash * 31 + row * this.cols + col) | 0;
-        }
-      }
-    }
-    return hash;
-  }
-  //#endregion
-
   //#region Reset
   reset(): void {
-    this.grid = this.createEmptyGrid();
+    this.engine.reset();
     this._phase = "tactical-buy";
     this.currentPhaseNumber = 1;
-    this.currentGeneration = 0;
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
     this.budgetPlayer1 =
@@ -178,146 +161,29 @@ export class Game {
     this.handPlayer1 = [];
     this.handPlayer2 = [];
     this.surrenderedPlayer = null;
-    this.scoreEvents = [];
-    this.scoreBuckets.clear();
     this._nextCardId = 1;
   }
   //#endregion
 
   //#region Simulation
   computeNextGeneration(): void {
-    this.currentGeneration++;
-    this.scoreEvents = [];
-
-    const newGrid: boolean[][] = this.createEmptyGrid();
-    const hitsThisTick = new Set<string>();
-
-    // 1. Conway step. Cells born in a score zone don't credit points
-    //    immediately — they accumulate into a regional bucket.
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) {
-        const neighbors = this.countNeighbors(row, col);
-        const isAlive = this.grid[row]![col];
-
-        if (isAlive && (neighbors === 2 || neighbors === 3)) {
-          newGrid[row]![col] = true;
-        } else if (!isAlive && neighbors === 3) {
-          newGrid[row]![col] = true;
-
-          const scoreResult = this.zones.isScoreCell(row, col);
-          if (scoreResult.scores && scoreResult.scorer) {
-            const scorer = scoreResult.scorer;
-            const key = this.regionKey(row, col, scorer);
-            hitsThisTick.add(key);
-            let bucket = this.scoreBuckets.get(key);
-            if (!bucket) {
-              bucket = {
-                scorer,
-                points: 0,
-                row,
-                col,
-                silenceCounter: 0,
-                ageCounter: 0,
-              };
-              this.scoreBuckets.set(key, bucket);
-            }
-            bucket.points += CONFIG.SCORE_POINTS;
-            // Track most recent hit position — that's where the
-            // floating "+N" will pop on flush.
-            bucket.row = row;
-            bucket.col = col;
-          }
-        }
-      }
-    }
-
-    this.grid = newGrid;
-
-    // 2. Decay phase. Bump silence/age counters on every existing
-    //    bucket, mark expired ones for flush.
-    //    Atomic-tick semantics: this runs *after* all hits are
-    //    collected, so a tick that both adds to a bucket AND ages it
-    //    past the cap flushes the bucket *with* the current tick's
-    //    points included.
-    const expiredKeys: string[] = [];
-    for (const [key, bucket] of this.scoreBuckets) {
-      if (hitsThisTick.has(key)) {
-        bucket.silenceCounter = 0;
+    const events = this.engine.computeNextGeneration();
+    for (const e of events) {
+      if (e.scorer === 1) {
+        this.scorePlayer1 += e.points;
       } else {
-        bucket.silenceCounter++;
-      }
-      bucket.ageCounter++;
-
-      if (
-        bucket.silenceCounter >= CONFIG.SCORE_BUCKET_SILENCE_LIMIT ||
-        bucket.ageCounter >= CONFIG.SCORE_BUCKET_AGE_LIMIT
-      ) {
-        expiredKeys.push(key);
+        this.scorePlayer2 += e.points;
       }
     }
-    for (const key of expiredKeys) {
-      const bucket = this.scoreBuckets.get(key)!;
-      this.creditAndEmit(bucket);
-      this.scoreBuckets.delete(key);
-    }
-
-    // 3. End-of-simulation force-flush. Anything still pending gets
-    //    credited and visualized on the final tick — otherwise points
-    //    would be silently dropped.
-    if (this.currentGeneration >= this.simGenerations) {
-      for (const bucket of this.scoreBuckets.values()) {
-        this.creditAndEmit(bucket);
-      }
-      this.scoreBuckets.clear();
-    }
-  }
-
-  private regionKey(row: number, col: number, scorer: Player): string {
-    const r = Math.floor(row / CONFIG.SCORE_BUCKET_REGION_SIZE);
-    const c = Math.floor(col / CONFIG.SCORE_BUCKET_REGION_SIZE);
-    return `${scorer}-${r}-${c}`;
-  }
-
-  // Credit a bucket's points to its scorer and emit a ScoreEvent so
-  // the UI can render the floating text. Caller is responsible for
-  // removing the bucket from the map.
-  private creditAndEmit(bucket: ScoreBucket): void {
-    if (bucket.scorer === 1) {
-      this.scorePlayer1 += bucket.points;
-    } else {
-      this.scorePlayer2 += bucket.points;
-    }
-    this.scoreEvents.push({
-      row: bucket.row,
-      col: bucket.col,
-      scorer: bucket.scorer,
-      points: bucket.points,
-    });
-  }
-
-  private countNeighbors(row: number, col: number): number {
-    let count = 0;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        if (dr === 0 && dc === 0) continue;
-        const r = row + dr;
-        const c = col + dc;
-        if (
-          r >= 0 &&
-          r < this.rows &&
-          c >= 0 &&
-          c < this.cols &&
-          this.grid[r]![c]
-        ) {
-          count++;
-        }
-      }
-    }
-    return count;
   }
 
   isSimulationComplete(): boolean {
-    return this.currentGeneration >= this.simGenerations;
+    return this.engine.isSimulationComplete();
+  }
+
+  // Fast grid hash (kept for sync debugging).
+  gridHash(): number {
+    return this.engine.gridHash();
   }
   //#endregion
 
@@ -331,15 +197,7 @@ export class Game {
     if (!this.zones.isValidPatternPlacement(pattern, startCol, player)) {
       return false;
     }
-
-    for (const [rowOffset, colOffset] of pattern.cells) {
-      const row = startRow + rowOffset;
-      const col = startCol + colOffset;
-      if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
-        this.grid[row]![col] = true;
-      }
-    }
-
+    this.engine.stampCells(startRow, startCol, pattern.cells);
     return true;
   }
   //#endregion
