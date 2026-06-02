@@ -28,6 +28,45 @@ export const PUZZLE_ZONE_CONFIG = {
 
 export const PUZZLES: PuzzleDefinition[] = [
   {
+    id: "stop-scoring-spaceship",
+    title: "Stop Scoring Spaceship",
+    objective:
+      "The spaceship has already reached your endzone! Stop the debris from scoring even more.",
+    hint: "Watch where the leftover patterns are heading.",
+    gridRows: PUZZLE_ROWS,
+    gridCols: PUZZLE_COLS,
+    playerSide: 1,
+
+    // Same mirrored MWSS setup as puzzle 1.
+    initialPlacements: [
+      { patternIndex: MWSS_INDEX, row: 12, col: 38, mirror: true },
+    ],
+
+    // Timeline:
+    //   1. Watch the spaceship fly in, hit the wall, and start scoring (100 gens).
+    //   2. Place one card to disrupt the ongoing debris.
+    //   3. Simulate 60 more generations.
+    //
+    // Without intervention: P2 scores ~32 pts by gen 100, ~191 total over 160 gens.
+    // Best achievable with a Block at gen 100: P2 = 64 total.
+    // Threshold set to 65 so the optimal placement always passes.
+    timeline: [
+      { kind: "simulate", generations: 100 },
+      {
+        kind: "place",
+        pool: [BLOCK_INDEX, BLINKER_INDEX, GLIDER_UP_INDEX, GLIDER_DOWN_INDEX],
+        maxCards: 1,
+      },
+      { kind: "simulate", generations: 60 },
+    ],
+
+    criteria: { maxOpponentScore: 65 },
+
+    // Player may only place within their own zone (cols 3–16, all rows).
+    placementRegion: { x: 3, y: 0, w: 14, h: PUZZLE_ROWS, color: "" },
+  },
+
+  {
     id: "stop-the-mwss",
     title: "Stop the Spaceship",
     objective:
