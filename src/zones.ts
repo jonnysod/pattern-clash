@@ -3,6 +3,18 @@
 import type { Pattern, Player, ZoneRect } from "./types.js";
 import { CONFIG } from "./config.js";
 
+// Optional configuration for zone layout.
+// Defaults reproduce the main-game layout (endzoneWidth=4, lShapes="both").
+// Puzzles can use smaller endzones and simpler score zones.
+//
+// lShapes: "both"  – L-shaped score zones at top and bottom (default)
+//          "none"  – straight full-height score columns only
+//          "top" | "bottom" – single L-shape on one side (reserved, not yet used)
+export interface ZonesConfig {
+  endzoneWidth?: number;
+  lShapes?: "both" | "none";
+}
+
 export class Zones {
   // Main zone boundaries (column indices)
   readonly endzoneLeftEnd: number; // First col AFTER left endzone
@@ -14,7 +26,7 @@ export class Zones {
   readonly scoreColumnLeft: number;
   readonly scoreColumnRight: number;
 
-  // L-shape score extensions
+  // L-shape score extensions (only meaningful when lShapes !== "none")
   readonly scoreColumnTopLeft: number;
   readonly scoreColumnBottomLeft: number;
   readonly scoreColumnTopRight: number;
@@ -27,12 +39,15 @@ export class Zones {
   readonly endzoneBottomStartRow: number;
 
   readonly rows: number;
+  readonly lShapes: ZonesConfig["lShapes"];
 
-  constructor(cols: number, rows: number) {
+  constructor(cols: number, rows: number, config?: ZonesConfig) {
     this.rows = rows;
+    this.lShapes = config?.lShapes ?? "both";
+
+    const endzoneWidth = config?.endzoneWidth ?? 4;
 
     // Compute symmetric zone layout
-    const endzoneWidth = 4;
     const playableWidth = cols - endzoneWidth * 2;
     const zoneWidth = Math.floor(playableWidth / 3);
 
@@ -93,6 +108,11 @@ export class Zones {
   }
 
   private isLeftScoreZone(row: number, col: number): boolean {
+    if (this.lShapes === "none") {
+      return col === this.scoreColumnLeft;
+    }
+
+    // lShapes === "both" (default)
     // Main side column (between L-shapes)
     if (
       col === this.scoreColumnLeft &&
@@ -129,6 +149,11 @@ export class Zones {
   }
 
   private isRightScoreZone(row: number, col: number): boolean {
+    if (this.lShapes === "none") {
+      return col === this.scoreColumnRight;
+    }
+
+    // lShapes === "both" (default)
     // Main side column
     if (
       col === this.scoreColumnRight &&
@@ -200,6 +225,26 @@ export class Zones {
       color: CONFIG.COLOR_ZONE_PLAYER2,
     });
 
+    if (this.lShapes === "none") {
+      // Simple full-height score columns only
+      rects.push({
+        x: this.scoreColumnLeft,
+        y: 0,
+        w: 1,
+        h: this.rows,
+        color: CONFIG.COLOR_ZONE_SCORE,
+      });
+      rects.push({
+        x: this.scoreColumnRight,
+        y: 0,
+        w: 1,
+        h: this.rows,
+        color: CONFIG.COLOR_ZONE_SCORE,
+      });
+      return rects;
+    }
+
+    // lShapes === "both": L-shaped endzone overlays and score zones
     // 3. L-shaped endzone overlays (gray, mask corners of player zones)
     // Left top L
     rects.push({

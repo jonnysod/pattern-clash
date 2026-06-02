@@ -58,6 +58,49 @@ export interface Card {
 // patternIndex is filled in when the corresponding placement action
 // arrives. This prevents leaking the opponent's full hand at confirm
 // time.
+// ---------------------------------------------------------------------------
+// Puzzle types
+// ---------------------------------------------------------------------------
+
+export interface PuzzleInitialPlacement {
+  patternIndex: number;
+  row: number;
+  col: number;
+  mirror?: boolean; // apply mirrorPatternHorizontal before stamping
+}
+
+export interface PuzzleSimulateEntry {
+  kind: "simulate";
+  generations: number;
+}
+
+export interface PuzzlePlaceEntry {
+  kind: "place";
+  pool: number[]; // pattern indices; each entry becomes one Card in hand
+  maxCards?: number; // max cards the player may commit; default = pool.length
+}
+
+export type PuzzleTimelineEntry = PuzzleSimulateEntry | PuzzlePlaceEntry;
+
+export interface PuzzleCriteria {
+  maxOpponentScore?: number;
+  minOwnScore?: number;
+}
+
+export interface PuzzleDefinition {
+  id: string;
+  title: string;
+  objective: string;
+  hint?: string;
+  gridRows: number;
+  gridCols: number;
+  playerSide: Player;
+  initialPlacements: PuzzleInitialPlacement[];
+  timeline: PuzzleTimelineEntry[];
+  criteria: PuzzleCriteria;
+  placementRegion?: ZoneRect; // where the player may place; default = whole grid
+}
+
 export type SyncAction =
   | {
       type: "buyConfirm";

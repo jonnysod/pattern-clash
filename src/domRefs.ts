@@ -81,6 +81,33 @@ export function createDOMRefs() {
     lobbyBackBtn1: getElement<HTMLButtonElement>("lobbyBackBtn1"),
     lobbyBackBtn2: getElement<HTMLButtonElement>("lobbyBackBtn2"),
     lobbyBackBtn3: getElement<HTMLButtonElement>("lobbyBackBtn3"),
+
+    // Lobby: Mini Games entry point
+    miniGamesBtn: getElement<HTMLButtonElement>("miniGamesBtn"),
+
+    // Puzzle selection overlay
+    puzzleSelectOverlay: getElement<HTMLDivElement>("puzzleSelectOverlay"),
+    puzzleList: getElement<HTMLDivElement>("puzzleList"),
+    puzzleSelectBackBtn: getElement<HTMLButtonElement>("puzzleSelectBackBtn"),
+
+    // Puzzle screen
+    puzzleScreen: getElement<HTMLDivElement>("puzzleScreen"),
+    puzzleTitle: getElement<HTMLHeadingElement>("puzzleTitle"),
+    puzzleObjective: getElement<HTMLParagraphElement>("puzzleObjective"),
+    puzzleHint: getElement<HTMLParagraphElement>("puzzleHint"),
+    puzzleGenerationCounter: getElement<HTMLSpanElement>(
+      "puzzleGenerationCounter",
+    ),
+    puzzleOpponentScore: getElement<HTMLSpanElement>("puzzleOpponentScore"),
+    puzzleCanvas: getElement<HTMLCanvasElement>("puzzleCanvas"),
+    puzzleCardHand1: getElement<HTMLDivElement>("puzzleCardHand1"),
+    puzzleCardHand2: getElement<HTMLDivElement>("puzzleCardHand2"),
+    puzzleDoneBtn: getElement<HTMLButtonElement>("puzzleDoneBtn"),
+    puzzleResultOverlay: getElement<HTMLDivElement>("puzzleResultOverlay"),
+    puzzleResultTitle: getElement<HTMLHeadingElement>("puzzleResultTitle"),
+    puzzleResultText: getElement<HTMLParagraphElement>("puzzleResultText"),
+    puzzleRetryBtn: getElement<HTMLButtonElement>("puzzleRetryBtn"),
+    puzzleBackBtn: getElement<HTMLButtonElement>("puzzleBackBtn"),
   };
 }
 

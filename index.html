@@ -406,6 +406,24 @@
           >
             Online Game (disabled)
           </button>
+          <br />
+          <button
+            id="miniGamesBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #dd8800;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Mini Games
+          </button>
         </div>
 
         <!-- Kept in DOM so domRefs resolves; hidden while online is off -->
@@ -629,6 +647,209 @@
         >
           Restart Game
         </button>
+      </div>
+    </div>
+
+    <!-- Puzzle selection overlay -->
+    <div
+      id="puzzleSelectOverlay"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background-color: #2a2a2a;
+          padding: 40px 60px;
+          border-radius: 10px;
+          text-align: center;
+          min-width: 350px;
+        "
+      >
+        <h2 style="margin: 0 0 24px 0; color: #00ff00">Mini Games</h2>
+        <div
+          id="puzzleList"
+          style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+          "
+        ></div>
+        <button
+          id="puzzleSelectBackBtn"
+          style="
+            padding: 8px 20px;
+            font-size: 14px;
+            background-color: transparent;
+            color: #888;
+            border: none;
+            cursor: pointer;
+          "
+        >
+          ← Back
+        </button>
+      </div>
+    </div>
+
+    <!-- Puzzle screen -->
+    <div
+      id="puzzleScreen"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #1a1a1a;
+        z-index: 1000;
+        justify-content: center;
+        align-items: flex-start;
+        overflow-y: auto;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 20px;
+        "
+      >
+        <div style="text-align: center; max-width: 700px">
+          <h2
+            id="puzzleTitle"
+            style="margin: 0 0 8px 0; color: #00ff00; font-size: 24px"
+          ></h2>
+          <p
+            id="puzzleObjective"
+            style="color: #aaa; margin: 0 0 6px 0; font-size: 15px"
+          ></p>
+          <p
+            id="puzzleHint"
+            style="
+              color: #888;
+              font-style: italic;
+              margin: 0;
+              font-size: 13px;
+            "
+          ></p>
+          <div style="font-size: 13px; color: #aaa; margin-top: 8px">
+            Generation:
+            <span id="puzzleGenerationCounter">0</span>
+            &nbsp;·&nbsp; Opponent score:
+            <span id="puzzleOpponentScore" style="color: #ff6666">0</span>
+          </div>
+        </div>
+        <canvas
+          id="puzzleCanvas"
+          width="600"
+          height="360"
+          style="border: 2px solid #444; background: #000; cursor: crosshair"
+        ></canvas>
+        <div
+          id="puzzleCardHand1"
+          class="card-hand"
+          style="max-width: 600px"
+        ></div>
+        <div style="text-align: center">
+          <button
+            id="puzzleDoneBtn"
+            style="
+              display: none;
+              padding: 10px 28px;
+              font-size: 16px;
+              font-weight: bold;
+              background-color: #00ff00;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            Done
+          </button>
+        </div>
+      </div>
+
+      <!-- Hidden P2 card hand — CardHand renders here but it is not shown -->
+      <div id="puzzleCardHand2" class="card-hand" style="display: none"></div>
+
+      <!-- Result overlay (fixed, sits above the puzzle screen) -->
+      <div
+        id="puzzleResultOverlay"
+        style="
+          display: none;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.85);
+          z-index: 1001;
+          justify-content: center;
+          align-items: center;
+        "
+      >
+        <div
+          style="
+            background-color: #2a2a2a;
+            padding: 40px 60px;
+            border-radius: 10px;
+            text-align: center;
+          "
+        >
+          <h2
+            id="puzzleResultTitle"
+            style="font-size: 36px; margin: 0 0 16px 0"
+          ></h2>
+          <p
+            id="puzzleResultText"
+            style="font-size: 18px; color: #aaa; margin: 0 0 30px 0"
+          ></p>
+          <button
+            id="puzzleRetryBtn"
+            style="
+              padding: 12px 32px;
+              font-size: 18px;
+              font-weight: bold;
+              background-color: #44dddd;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              margin-right: 12px;
+            "
+          >
+            Retry
+          </button>
+          <button
+            id="puzzleBackBtn"
+            style="
+              padding: 12px 32px;
+              font-size: 18px;
+              background-color: #666;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            ← Puzzles
+          </button>
+        </div>
       </div>
     </div>
 

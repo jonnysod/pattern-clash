@@ -1,25 +1,34 @@
 // Canvas rendering logic
 
 import type { Pattern, Player, ZoneRect } from "./types.js";
-import { Game } from "./game.js";
+import { Zones } from "./zones.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
+
+// Minimal interface Renderer needs from its data source.
+// Both Game and the puzzle harness satisfy this structurally.
+export interface RenderSource {
+  readonly rows: number;
+  readonly cols: number;
+  readonly grid: boolean[][];
+  readonly zones: Zones;
+}
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private cellSize: number;
-  private game: Game;
+  private source: RenderSource;
 
   // Cached zone rectangles (computed once)
   private zoneRects: ZoneRect[];
 
-  constructor(canvas: HTMLCanvasElement, cellSize: number, game: Game) {
+  constructor(canvas: HTMLCanvasElement, cellSize: number, source: RenderSource) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     this.cellSize = cellSize;
-    this.game = game;
-    this.zoneRects = game.zones.getRenderRects();
+    this.source = source;
+    this.zoneRects = source.zones.getRenderRects();
   }
 
   drawGrid(): void {
@@ -36,9 +45,9 @@ export class Renderer {
 
     // Draw living cells
     ctx.fillStyle = CONFIG.COLOR_CELL;
-    for (let row = 0; row < this.game.rows; row++) {
-      for (let col = 0; col < this.game.cols; col++) {
-        if (this.game.grid[row]![col]) {
+    for (let row = 0; row < this.source.rows; row++) {
+      for (let col = 0; col < this.source.cols; col++) {
+        if (this.source.grid[row]![col]) {
           ctx.fillRect(col * cs, row * cs, cs - 1, cs - 1);
         }
       }
@@ -58,13 +67,13 @@ export class Renderer {
     ctx.strokeStyle = CONFIG.COLOR_GRID_LINE;
     ctx.lineWidth = 1;
 
-    for (let i = 0; i <= this.game.rows; i++) {
+    for (let i = 0; i <= this.source.rows; i++) {
       ctx.beginPath();
       ctx.moveTo(0, i * cs);
       ctx.lineTo(this.canvas.width, i * cs);
       ctx.stroke();
     }
-    for (let i = 0; i <= this.game.cols; i++) {
+    for (let i = 0; i <= this.source.cols; i++) {
       ctx.beginPath();
       ctx.moveTo(i * cs, 0);
       ctx.lineTo(i * cs, this.canvas.height);
@@ -75,7 +84,7 @@ export class Renderer {
   private drawZoneBorders(): void {
     const cs = this.cellSize;
     const ctx = this.ctx;
-    const zones = this.game.zones;
+    const zones = this.source.zones;
 
     ctx.strokeStyle = CONFIG.COLOR_ZONE_BORDER;
     ctx.lineWidth = 3;
@@ -125,9 +134,9 @@ export class Renderer {
       const col = startCol + colOffset;
       if (
         row >= 0 &&
-        row < this.game.rows &&
+        row < this.source.rows &&
         col >= 0 &&
-        col < this.game.cols
+        col < this.source.cols
       ) {
         this.ctx.fillRect(col * cs, row * cs, cs - 1, cs - 1);
       }

@@ -4,14 +4,20 @@
 // to the inactive player are shown face-down (back pattern). Clicking an
 // active player's card selects it for placement.
 
-import type { Player, Card, Pattern } from "./types.js";
-import { Game } from "./game.js";
+import type { Player, Card, Pattern, BuyInventoryEntry } from "./types.js";
 import { PATTERNS } from "./patterns.js";
 import { drawPatternPreview } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 
+// Minimal interface CardHand needs from its data source.
+// Game satisfies this structurally; the puzzle harness provides its own implementation.
+export interface CardProvider {
+  getHand(player: Player): Card[];
+  getInventory(player: Player): BuyInventoryEntry[];
+}
+
 export class CardHand {
-  private game: Game;
+  private provider: CardProvider;
   private container1: HTMLDivElement;
   private container2: HTMLDivElement;
 
@@ -45,11 +51,11 @@ export class CardHand {
   onCardSelect: ((cardId: string | null) => void) | null = null;
 
   constructor(
-    game: Game,
+    provider: CardProvider,
     container1: HTMLDivElement,
     container2: HTMLDivElement,
   ) {
-    this.game = game;
+    this.provider = provider;
     this.container1 = container1;
     this.container2 = container2;
   }
@@ -155,7 +161,7 @@ export class CardHand {
     const isPreview = this.previewPlayers.has(player);
     const cards: Card[] = isPreview
       ? this.expandInventoryAsPreviewCards(player)
-      : this.game.getHand(player);
+      : this.provider.getHand(player);
 
     const isVisible = player === this.visiblePlayer;
     // In preview mode, cards are non-clickable: the "active turn"
@@ -177,7 +183,7 @@ export class CardHand {
   }
 
   private expandInventoryAsPreviewCards(player: Player): Card[] {
-    const inventory = this.game.getInventory(player);
+    const inventory = this.provider.getInventory(player);
     const cards: Card[] = [];
     let n = 0;
     for (const entry of inventory) {

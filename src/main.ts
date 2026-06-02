@@ -16,6 +16,10 @@ import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
 import { CONFIG } from "./config.js";
 import { logInfo } from "./logger.js";
+import { PuzzleRunner } from "./puzzleRunner.js";
+import type { PuzzleDOMRefs } from "./puzzleRunner.js";
+import { PUZZLES } from "./puzzles.js";
+import type { PuzzleDefinition } from "./types.js";
 
 //#region Initialization
 const dom = createDOMRefs();
@@ -76,6 +80,66 @@ function showLobbySection(sectionId: string): void {
   dom.lobbyJoin.style.display = "none";
   const target = document.getElementById(sectionId);
   if (target) target.style.display = "block";
+}
+//#endregion
+
+//#region Puzzle Mode
+let puzzleRunner: PuzzleRunner | null = null;
+let currentPuzzle: PuzzleDefinition | null = null;
+
+function buildPuzzleDOMRefs(): PuzzleDOMRefs {
+  return {
+    canvas: dom.puzzleCanvas,
+    cardHand1: dom.puzzleCardHand1,
+    cardHand2: dom.puzzleCardHand2,
+    objective: dom.puzzleObjective,
+    hint: dom.puzzleHint,
+    doneBtn: dom.puzzleDoneBtn,
+    generationCounter: dom.puzzleGenerationCounter,
+    opponentScore: dom.puzzleOpponentScore,
+    resultOverlay: dom.puzzleResultOverlay,
+    resultTitle: dom.puzzleResultTitle,
+    resultText: dom.puzzleResultText,
+    retryBtn: dom.puzzleRetryBtn,
+    backBtn: dom.puzzleBackBtn,
+  };
+}
+
+function showPuzzleSelect(): void {
+  dom.startOverlay.style.display = "none";
+  dom.puzzleSelectOverlay.style.display = "flex";
+
+  // Rebuild list on every entry in case PUZZLES changes in the future.
+  dom.puzzleList.innerHTML = "";
+  for (const puzzle of PUZZLES) {
+    const btn = document.createElement("button");
+    btn.textContent = puzzle.title;
+    btn.style.cssText =
+      "padding: 12px 24px; font-size: 18px; background-color: #00ff00; " +
+      "color: #1a1a1a; border: none; border-radius: 5px; cursor: pointer; " +
+      "font-weight: bold; width: 250px;";
+    btn.addEventListener("click", () => startPuzzle(puzzle));
+    dom.puzzleList.appendChild(btn);
+  }
+}
+
+function startPuzzle(puzzle: PuzzleDefinition): void {
+  currentPuzzle = puzzle;
+  dom.puzzleSelectOverlay.style.display = "none";
+  dom.puzzleScreen.style.display = "flex";
+  dom.puzzleTitle.textContent = puzzle.title;
+
+  // Create the runner once; reuse across retries and puzzle switches.
+  if (!puzzleRunner) {
+    puzzleRunner = new PuzzleRunner(buildPuzzleDOMRefs());
+    puzzleRunner.onExit = () => {
+      dom.puzzleScreen.style.display = "none";
+      showPuzzleSelect();
+    };
+  }
+
+  puzzleRunner.start(puzzle);
+  logInfo(`[Puzzle] started: ${puzzle.id}`);
 }
 //#endregion
 
@@ -183,7 +247,7 @@ async function onCancelWaiting(): Promise<void> {
 }
 //#endregion
 
-//#region Lobby Event Handlers
+//#region Lobby & Puzzle Event Handlers
 dom.localGameBtn.addEventListener("click", () => {
   startLocalGame();
 });
@@ -213,7 +277,7 @@ dom.joinCodeInput.addEventListener("keydown", (e) => {
   }
 });
 
-// Back buttons
+// Back buttons (lobby)
 dom.lobbyBackBtn1.addEventListener("click", () => {
   showLobbySection("lobbyModeSelect");
 });
@@ -222,6 +286,30 @@ dom.lobbyBackBtn2.addEventListener("click", () => {
 });
 dom.lobbyBackBtn3.addEventListener("click", () => {
   showLobbySection("lobbyOnlineChoice");
+});
+
+// Puzzle routing
+dom.miniGamesBtn.addEventListener("click", () => {
+  showPuzzleSelect();
+});
+dom.puzzleSelectBackBtn.addEventListener("click", () => {
+  dom.puzzleSelectOverlay.style.display = "none";
+  dom.startOverlay.style.display = "flex";
+});
+dom.puzzleDoneBtn.addEventListener("click", () => {
+  puzzleRunner?.commitPlacements();
+});
+dom.puzzleRetryBtn.addEventListener("click", () => {
+  if (currentPuzzle && puzzleRunner) {
+    // start() already hides the result overlay — no pre-hide needed.
+    puzzleRunner.start(currentPuzzle);
+    logInfo(`[Puzzle] retrying: ${currentPuzzle.id}`);
+  }
+});
+dom.puzzleBackBtn.addEventListener("click", () => {
+  puzzleRunner?.stop();
+  dom.puzzleScreen.style.display = "none";
+  showPuzzleSelect();
 });
 //#endregion
 
