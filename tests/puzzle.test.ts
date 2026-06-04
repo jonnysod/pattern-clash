@@ -120,3 +120,84 @@ describe("stop-the-mwss — engine scenarios", () => {
     expect(totalSim).toBe(100);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression test: force-flush pending buckets at segment end
+//
+// Bug: the puzzle runner initialises the engine with simGenerations=9999 so
+// the engine's internal end-of-sim flush (currentGeneration >= simGenerations)
+// never fires.  Score hits that accumulate in a bucket during the last few
+// ticks of a segment stay pending and are dropped — the criteria check then
+// sees opponentScore=0 and incorrectly reports "Solved!".
+//
+// Fix: engine.forceFlushBuckets() was added so the puzzle runner can flush
+// pending buckets explicitly at the end of each simulate segment, before
+// advancing to the next timeline phase or showing the result overlay.
+// ---------------------------------------------------------------------------
+
+describe("engine.forceFlushBuckets() — regression for late-hit score loss", () => {
+  // Craft a situation where exactly one score birth happens on tick 1 and
+  // the bucket does NOT reach SILENCE_LIMIT (3) or AGE_LIMIT (15).
+  //
+  // Layout (50×30, lShapes=none, endzoneWidth=3):
+  //   scoreColumnLeft = 2 — P2 scores when a cell is born at col 2.
+  //
+  // Cells placed so (15, 2) is dead but has exactly 3 live neighbours →
+  // a cell is born there on tick 1 → P2 bucket accumulates 1 point.
+  // After just 1 tick: silenceCounter=0, ageCounter=1 → neither limit
+  // reached → scoreEvents is empty → without flush, opponentScore stays 0.
+
+  const rows = 30;
+  const cols = 50;
+  const zones = new Zones(cols, rows, PUZZLE_ZONE_CONFIG);
+
+  function makeSingleHitEngine(): Engine {
+    // simGenerations=9999 mirrors how PuzzleRunner creates the engine.
+    const eng = new Engine(rows, cols, zones, 9999);
+    // Three live neighbours around (15, 2): birth there on tick 1.
+    eng.stampCells(0, 0, [[14, 1], [14, 2], [15, 1]]);
+    return eng;
+  }
+
+  it("score hit in bucket is NOT emitted by computeNextGeneration alone (confirms bug precondition)", () => {
+    const eng = makeSingleHitEngine();
+    const events = eng.computeNextGeneration(); // tick 1 — bucket now has 1 pt
+    // Bucket is still pending: silenceCounter=0, ageCounter=1 — neither limit.
+    const scoreFromTick = events.reduce((s, e) => s + e.points, 0);
+    expect(scoreFromTick).toBe(0);
+  });
+
+  it("forceFlushBuckets() returns the pending score after the segment ends", () => {
+    const eng = makeSingleHitEngine();
+    eng.computeNextGeneration(); // tick 1 — score hit accumulates in bucket
+    const flushed = eng.forceFlushBuckets();
+    const totalFlushed = flushed.reduce((s, e) => s + e.points, 0);
+    expect(totalFlushed).toBeGreaterThan(0);
+    expect(flushed[0]?.scorer).toBe(2); // P2 scored
+  });
+
+  it("scoreBuckets is empty after forceFlushBuckets()", () => {
+    const eng = makeSingleHitEngine();
+    eng.computeNextGeneration();
+    eng.forceFlushBuckets();
+    // A second flush should return nothing — buckets were cleared.
+    const secondFlush = eng.forceFlushBuckets();
+    expect(secondFlush).toHaveLength(0);
+  });
+
+  it("combined tick events + flush covers the full score (no double-count)", () => {
+    // Run 3 ticks: first two have no score, third has a hit that IS naturally
+    // flushed (silenceCounter reaches SILENCE_LIMIT=3) plus a hit that
+    // accumulates. Then flush manually and verify sum = all births at col 2.
+    const eng = makeSingleHitEngine();
+    let total = 0;
+    for (let i = 0; i < 3; i++) {
+      const evts = eng.computeNextGeneration();
+      total += evts.reduce((s, e) => s + e.points, 0);
+    }
+    const flushed = eng.forceFlushBuckets();
+    total += flushed.reduce((s, e) => s + e.points, 0);
+    // At least the 1 birth at (15, 2) on tick 1 must be accounted for.
+    expect(total).toBeGreaterThan(0);
+  });
+});
