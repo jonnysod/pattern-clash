@@ -76,12 +76,14 @@ const P1: PuzzleDefinition = {
 
 // ---------------------------------------------------------------------------
 // P2 — Limit the Damage (defensive, no-L, threshold)
-// Same MWSS setup as P1, but 100 gens run first — spaceship has already
-// crashed and left debris that keeps scoring.
+// MWSS starts closer (col 18) so the crash happens around gen 36 instead of
+// ~76, cutting 40 gens of uneventful approach. The debris constellation at
+// the action point is identical to the original col-38 / 100-gen setup.
 //
-// Without intervention: P2 scores ~5 by gen 100, ~191 total over 160 gens.
-// Best achievable with Block at gen 100: P2 = 64 total.
-// Threshold 100 — achievable with a well-placed Block and comfortable headroom.
+// Verified (col 18, 60+60 gens):
+//   Without intervention: P2 = 211 (first score gen 45).
+//   Best Block position (exhaustive search): (row 12, col 3) → P2 = 64.
+//   22 positions in P1 zone achieve ≤ 100. Threshold 100 confirmed valid.
 // ---------------------------------------------------------------------------
 const P2: PuzzleDefinition = {
   id: "stop-scoring-spaceship",
@@ -93,15 +95,15 @@ const P2: PuzzleDefinition = {
   playerSide: 1,
 
   initialPlacements: [
-    { patternIndex: MWSS_INDEX, row: 12, col: 38, mirror: true },
+    { patternIndex: MWSS_INDEX, row: 12, col: 18, mirror: true },
   ],
 
   // Timeline:
-  //   1. Watch the spaceship fly in, hit the wall, and start scoring (100 gens).
+  //   1. Watch the spaceship crash and start scoring (60 gens; crash ~gen 36).
   //   2. Place one card to disrupt the ongoing debris.
   //   3. Simulate 60 more generations.
   timeline: [
-    { kind: "simulate", generations: 100 },
+    { kind: "simulate", generations: 60 },
     {
       kind: "place",
       pool: [BLOCK_INDEX, BLINKER_INDEX, GLIDER_UP_INDEX, GLIDER_DOWN_INDEX],
