@@ -331,10 +331,41 @@ export class PuzzleRunner {
 
     if (this.engine.currentGeneration >= this.simGenTarget) {
       this.stopSimulation();
-      this.runNextTimelineEntry();
+      this.flushAndAdvance();
       return;
     }
     this.scheduleSimTick();
+  }
+
+  // Force-flush any pending score buckets at segment end, update the score
+  // display, then hold briefly so score floaters finish animating before the
+  // next phase (or result overlay) appears.
+  //
+  // The hold matches the scoreEffects float duration (1500 ms) minus a small
+  // lead so the overlay appears while floaters are still fading out rather
+  // than popping in after the overlay covers the canvas.
+  private static readonly SEGMENT_END_HOLD_MS = 1000;
+
+  private flushAndAdvance(): void {
+    if (!this.engine) return;
+
+    // Flush any score hits accumulated in pending buckets that haven't yet
+    // been emitted via SILENCE_LIMIT or AGE_LIMIT.
+    const flushEvents = this.engine.forceFlushBuckets();
+    if (flushEvents.length > 0) {
+      this.scoreEffects?.feed(flushEvents);
+      for (const e of flushEvents) {
+        if (e.scorer === 1) this.p1Score += e.points;
+        else this.p2Score += e.points;
+      }
+      this.updateOpponentScore();
+    }
+
+    // Hold so floaters are visible before the next phase / result overlay.
+    window.setTimeout(
+      () => this.runNextTimelineEntry(),
+      PuzzleRunner.SEGMENT_END_HOLD_MS,
+    );
   }
 
   private stopSimulation(): void {

@@ -182,6 +182,26 @@ export class Engine {
     return this.currentGeneration >= this.simGenerations;
   }
 
+  // Flush all pending score buckets immediately and return the resulting
+  // ScoreEvents. Intended for external callers (e.g. the puzzle runner) that
+  // control segment boundaries independently of simGenerations.
+  // After this call scoreBuckets is empty and scoreEvents contains the flushed
+  // events (same as the end-of-simulation flush inside computeNextGeneration).
+  forceFlushBuckets(): ScoreEvent[] {
+    const events: ScoreEvent[] = [];
+    for (const bucket of this.scoreBuckets.values()) {
+      events.push({
+        row: bucket.row,
+        col: bucket.col,
+        scorer: bucket.scorer,
+        points: bucket.points,
+      });
+    }
+    this.scoreBuckets.clear();
+    this.scoreEvents = events;
+    return events;
+  }
+
   // Fast grid hash (kept for sync debugging).
   gridHash(): number {
     let hash = 0;
