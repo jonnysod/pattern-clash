@@ -95,6 +95,7 @@ export interface PuzzleDefinition {
   gridRows: number;
   gridCols: number;
   playerSide: Player;
+  zoneConfig?: "l-shapes"; // omit for no-L; "l-shapes" for L-shaped score zones
   initialPlacements: PuzzleInitialPlacement[];
   timeline: PuzzleTimelineEntry[];
   criteria: PuzzleCriteria;

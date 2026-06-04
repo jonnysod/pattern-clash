@@ -20,6 +20,7 @@ import { PuzzleRunner } from "./puzzleRunner.js";
 import type { PuzzleDOMRefs } from "./puzzleRunner.js";
 import { PUZZLES } from "./puzzles.js";
 import type { PuzzleDefinition } from "./types.js";
+import { getBestScore, isSolved } from "./puzzleHighscores.js";
 
 //#region Initialization
 const dom = createDOMRefs();
@@ -105,6 +106,15 @@ function buildPuzzleDOMRefs(): PuzzleDOMRefs {
   };
 }
 
+function bestScoreLabel(puzzle: PuzzleDefinition): string {
+  if (!isSolved(puzzle.id)) return "";
+  const best = getBestScore(puzzle.id);
+  if (best === null) return "✓";
+  const isBinary =
+    puzzle.criteria.maxOpponentScore !== undefined && puzzle.criteria.maxOpponentScore === 0;
+  return isBinary ? "✓" : `✓ Best: ${best}`;
+}
+
 function showPuzzleSelect(): void {
   dom.startOverlay.style.display = "none";
   dom.puzzleSelectOverlay.style.display = "flex";
@@ -112,6 +122,9 @@ function showPuzzleSelect(): void {
   // Rebuild list on every entry in case PUZZLES changes in the future.
   dom.puzzleList.innerHTML = "";
   for (const puzzle of PUZZLES) {
+    const item = document.createElement("div");
+    item.style.cssText = "display: flex; flex-direction: column; align-items: center; gap: 4px;";
+
     const btn = document.createElement("button");
     btn.textContent = puzzle.title;
     btn.style.cssText =
@@ -119,7 +132,14 @@ function showPuzzleSelect(): void {
       "color: #1a1a1a; border: none; border-radius: 5px; cursor: pointer; " +
       "font-weight: bold; width: 250px;";
     btn.addEventListener("click", () => startPuzzle(puzzle));
-    dom.puzzleList.appendChild(btn);
+
+    const indicator = document.createElement("span");
+    indicator.style.cssText = "font-size: 13px; color: #aaa; min-height: 18px;";
+    indicator.textContent = bestScoreLabel(puzzle);
+
+    item.appendChild(btn);
+    item.appendChild(indicator);
+    dom.puzzleList.appendChild(item);
   }
 }
 

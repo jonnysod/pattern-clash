@@ -22,7 +22,8 @@ import { PATTERNS } from "./patterns.js";
 import { mirrorPatternHorizontal, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 import { logInfo, logWarn } from "./logger.js";
-import { PUZZLE_ZONE_CONFIG } from "./puzzles.js";
+import { PUZZLE_ZONE_CONFIG, PUZZLE_ZONE_CONFIG_L } from "./puzzles.js";
+import { getBestScore, recordScore } from "./puzzleHighscores.js";
 
 // DOM elements the puzzle screen needs.
 export interface PuzzleDOMRefs {
@@ -83,6 +84,62 @@ class PuzzleRenderSource implements RenderSource {
 }
 
 type PuzzleState = "idle" | "simulating" | "placing" | "result";
+
+// ---------------------------------------------------------------------------
+// Result overlay text builder — extracted for testability
+// ---------------------------------------------------------------------------
+
+export interface ResultDisplay {
+  title: string;       // "Solved!" or "Failed"
+  scoreText: string;   // second line; may be empty for binary successes
+  success: boolean;
+}
+
+// Compute the overlay display values for a finished puzzle run.
+// `prevBestFn` allows injection in tests (avoids real localStorage reads).
+export function buildResultDisplay(
+  puzzleId: string,
+  criteria: import("./types.js").PuzzleCriteria,
+  p1Score: number,
+  p2Score: number,
+  prevBestFn: (id: string) => number | null,
+  recordFn: (id: string, score: number, lowerIsBetter: boolean) => "new-best" | "not-best",
+): ResultDisplay {
+  let success = true;
+  if (criteria.maxOpponentScore !== undefined && p2Score > criteria.maxOpponentScore) success = false;
+  if (criteria.minOwnScore !== undefined && p1Score < criteria.minOwnScore) success = false;
+
+  let scoreText = "";
+
+  if (criteria.maxOpponentScore !== undefined) {
+    const isBinary = criteria.maxOpponentScore === 0;
+    if (!success) {
+      scoreText = `Opponent scored ${p2Score} (limit ≤ ${criteria.maxOpponentScore})`;
+    } else if (!isBinary) {
+      const prevBest = prevBestFn(puzzleId);
+      const result = recordFn(puzzleId, p2Score, true);
+      scoreText =
+        result === "new-best"
+          ? `Opponent scored ${p2Score} (limit ≤ ${criteria.maxOpponentScore}). New best!`
+          : `Opponent scored ${p2Score} (limit ≤ ${criteria.maxOpponentScore}). Best: ${prevBest ?? p2Score}`;
+    } else {
+      recordFn(puzzleId, 0, true);
+    }
+  } else if (criteria.minOwnScore !== undefined) {
+    if (!success) {
+      scoreText = `You scored ${p1Score} (needed ≥ ${criteria.minOwnScore})`;
+    } else {
+      const prevBest = prevBestFn(puzzleId);
+      const result = recordFn(puzzleId, p1Score, false);
+      scoreText =
+        result === "new-best"
+          ? `You scored ${p1Score} (target ≥ ${criteria.minOwnScore}). New best!`
+          : `You scored ${p1Score} (target ≥ ${criteria.minOwnScore}). Best: ${prevBest ?? p1Score}`;
+    }
+  }
+
+  return { title: success ? "Solved!" : "Failed", scoreText, success };
+}
 
 export class PuzzleRunner {
   private dom: PuzzleDOMRefs;
@@ -156,7 +213,9 @@ export class PuzzleRunner {
   // -------------------------------------------------------------------------
 
   private buildEngine(puzzle: PuzzleDefinition): void {
-    this.zones = new Zones(puzzle.gridCols, puzzle.gridRows, PUZZLE_ZONE_CONFIG);
+    const zoneConfig =
+      puzzle.zoneConfig === "l-shapes" ? PUZZLE_ZONE_CONFIG_L : PUZZLE_ZONE_CONFIG;
+    this.zones = new Zones(puzzle.gridCols, puzzle.gridRows, zoneConfig);
     this.engine = new Engine(
       puzzle.gridRows,
       puzzle.gridCols,
@@ -525,31 +584,22 @@ export class PuzzleRunner {
     this.stopSimulation();
 
     if (!this.puzzle) return;
-    const { criteria } = this.puzzle;
-    let success = true;
-    const lines: string[] = [];
 
-    if (criteria.maxOpponentScore !== undefined) {
-      if (this.p2Score > criteria.maxOpponentScore) {
-        success = false;
-        lines.push(`Opponent scored ${this.p2Score} (limit: ${criteria.maxOpponentScore}).`);
-      }
-    }
-    if (criteria.minOwnScore !== undefined) {
-      if (this.p1Score < criteria.minOwnScore) {
-        success = false;
-        lines.push(`You scored only ${this.p1Score} (need: ${criteria.minOwnScore}).`);
-      }
-    }
+    const display = buildResultDisplay(
+      this.puzzle.id,
+      this.puzzle.criteria,
+      this.p1Score,
+      this.p2Score,
+      getBestScore,
+      recordScore,
+    );
 
-    this.dom.resultTitle.textContent = success ? "Success! 🎉" : "Try again!";
-    this.dom.resultTitle.style.color = success ? "#00ff88" : "#ff6666";
-    this.dom.resultText.textContent = success
-      ? "You stopped the spaceship!"
-      : lines.join(" ");
+    this.dom.resultTitle.textContent = display.title;
+    this.dom.resultTitle.style.color = display.success ? "#00ff88" : "#ff6666";
+    this.dom.resultText.textContent = display.scoreText;
     this.dom.resultOverlay.style.display = "flex";
     this.dom.doneBtn.style.display = "none";
-    logInfo(`[Puzzle] result: ${success ? "success" : "failure"} — p1=${this.p1Score} p2=${this.p2Score}`);
+    logInfo(`[Puzzle] result: ${display.success ? "success" : "failure"} — p1=${this.p1Score} p2=${this.p2Score}`);
   }
 
   // Exposed for tests (headless evaluation without rendering)
