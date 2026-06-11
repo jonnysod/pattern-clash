@@ -1,4 +1,4 @@
-// Headless unit tests for P7 (Score Through the L) and P8 (Clear the Path).
+// Headless unit tests for P7 (Score Through the L) and P8 (Chain Reaction).
 // Pattern: nothing → fails criterion; intended solution → passes criterion.
 
 import { describe, it, expect } from "vitest";
@@ -7,14 +7,8 @@ import { Zones } from "../src/zones.js";
 import { PATTERNS } from "../src/patterns.js";
 import { PUZZLES, PUZZLE_ZONE_CONFIG, PUZZLE_ZONE_CONFIG_L } from "../src/puzzles.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function runEngine(
-  rows: number,
-  cols: number,
-  zones: Zones,
+  rows: number, cols: number, zones: Zones,
   stamps: { r: number; c: number; cells: [number,number][] }[],
   gens: number,
 ): { p1: number; p2: number } {
@@ -43,12 +37,11 @@ describe("P7 — Score Through the L", () => {
     expect(puzzle).toBeDefined();
     expect(puzzle.gridRows).toBe(30);
     expect(puzzle.gridCols).toBe(50);
-    expect(puzzle.criteria.minOwnScore).toBe(30);
+    expect(puzzle.criteria.minOwnScore).toBe(70);
     expect(puzzle.zoneConfig).toBe("l-shapes");
   });
 
-  it("nothing placed: P1 scores 0 (criterion fails)", () => {
-    // Include initial placement stamps if any
+  it("nothing placed: P1 = 0 (criterion fails)", () => {
     const stamps = puzzle.initialPlacements.map(ip => ({
       r: ip.row, c: ip.col,
       cells: ip.mirror
@@ -57,21 +50,27 @@ describe("P7 — Score Through the L", () => {
     }));
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones, stamps, simGens);
     expect(p1).toBe(0);
-    expect(p1 < puzzle.criteria.minOwnScore!).toBe(true);
   });
 
-  it("MWSS at row 24 (optimal L-sweep): P1 ≥ 30 (criterion passes)", () => {
-    const mwss = PATTERNS[1]!.cells; // index 1
+  it("MWSS at row 24 (optimal L-sweep): P1 >= 70 (criterion passes)", () => {
+    const mwss = PATTERNS[1]!.cells;
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
       [{ r: 24, c: 5, cells: mwss }], simGens);
-    expect(p1).toBeGreaterThanOrEqual(30);
+    expect(p1).toBeGreaterThanOrEqual(70);
   });
 
-  it("MWSS standard row (13): also passes criterion (43 > 30)", () => {
+  it("MWSS at row 22 (bottom L-arm, boundary): P1 = 70 (criterion passes)", () => {
+    const mwss = PATTERNS[1]!.cells;
+    const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
+      [{ r: 22, c: 5, cells: mwss }], simGens);
+    expect(p1).toBeGreaterThanOrEqual(70);
+  });
+
+  it("MWSS standard row (13): P1 = 43 — criterion fails (< 70)", () => {
     const mwss = PATTERNS[1]!.cells;
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
       [{ r: 13, c: 5, cells: mwss }], simGens);
-    expect(p1).toBeGreaterThanOrEqual(30);
+    expect(p1).toBeLessThan(70);
   });
 
   it("Blinker (decoy): P1 = 0 (criterion fails)", () => {
@@ -79,20 +78,18 @@ describe("P7 — Score Through the L", () => {
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
       [{ r: 13, c: 10, cells: blinker }], simGens);
     expect(p1).toBe(0);
-    expect(p1 < puzzle.criteria.minOwnScore!).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// P8 — Clear the Path
+// P8 — Chain Reaction
 // ---------------------------------------------------------------------------
 
-describe("P8 — Clear the Path", () => {
-  const puzzle = PUZZLES.find(p => p.id === "clear-the-path")!;
+describe("P8 — Chain Reaction", () => {
+  const puzzle = PUZZLES.find(p => p.id === "chain-reaction")!;
   const zones = new Zones(puzzle.gridCols, puzzle.gridRows, PUZZLE_ZONE_CONFIG);
-  const SIM_GENS = 140;
+  const SIM_GENS = 160;
 
-  // Stamps for the puzzle's initial barrier placements.
   const barrierStamps = puzzle.initialPlacements.map(ip => ({
     r: ip.row, c: ip.col,
     cells: PATTERNS[ip.patternIndex]!.cells,
@@ -102,9 +99,9 @@ describe("P8 — Clear the Path", () => {
     expect(puzzle).toBeDefined();
     expect(puzzle.gridRows).toBe(36);
     expect(puzzle.gridCols).toBe(60);
-    expect(puzzle.criteria.minOwnScore).toBe(100);
-    expect(puzzle.initialPlacements).toHaveLength(2);
-    expect(puzzle.placementRegion!.w).toBe(18); // P1 zone width for 60-col grid
+    expect(puzzle.criteria.minOwnScore).toBe(150);
+    expect(puzzle.initialPlacements).toHaveLength(3); // 3 Blinker in P2 zone
+    expect(puzzle.placementRegion!.w).toBe(18);
   });
 
   it("nothing placed: P1 = 0 (criterion fails)", () => {
@@ -112,32 +109,22 @@ describe("P8 — Clear the Path", () => {
     expect(p1).toBe(0);
   });
 
-  it("MWSS in free middle (row 13) alone: P1 = 99, criterion fails (< 100)", () => {
+  it("solo MWSS row 7 (best single): P1 = 149, just below threshold", () => {
     const mwss = PATTERNS[1]!.cells;
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
-      [...barrierStamps, { r: 13, c: 5, cells: mwss }], SIM_GENS);
-    expect(p1).toBe(99);
-    expect(p1).toBeLessThan(100);
+      [...barrierStamps, { r: 7, c: 5, cells: mwss }], SIM_GENS);
+    expect(p1).toBe(149);
+    expect(p1).toBeLessThan(150);
   });
 
-  it("MWSS at blocked upper lane (row 3) alone: P1 = 0", () => {
-    const mwss = PATTERNS[1]!.cells;
-    const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones,
-      [...barrierStamps, { r: 3, c: 5, cells: mwss }], SIM_GENS);
-    expect(p1).toBe(0);
-  });
-
-  it("GliderDown(2,17)+MWSS(3,5)+MWSS(13,5): criterion passes (≥100)", () => {
-    // Verified 3-card solution: GliderDown clears upper block, two MWSSes score.
-    const gliderDown = PATTERNS[8]!.cells;
+  it("MWSS(7,5) + MWSS(19,5): criterion passes (>= 150)", () => {
     const mwss = PATTERNS[1]!.cells;
     const { p1 } = runEngine(puzzle.gridRows, puzzle.gridCols, zones, [
       ...barrierStamps,
-      { r: 2, c: 17, cells: gliderDown },
-      { r: 3, c: 5,  cells: mwss },
-      { r: 13, c: 5, cells: mwss },
+      { r: 7,  c: 5, cells: mwss },
+      { r: 19, c: 5, cells: mwss },
     ], SIM_GENS);
-    expect(p1).toBeGreaterThanOrEqual(100);
+    expect(p1).toBeGreaterThanOrEqual(150);
   });
 
   it("Blinker decoy alone: P1 = 0", () => {

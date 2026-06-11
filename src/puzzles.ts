@@ -296,17 +296,18 @@ const P6: PuzzleDefinition = {
 // in sequence — volume beats precision. Contrast with P6 (single glider hit).
 //
 // Verified (L-zones, 100 gens, col 5):
-//   MWSS row 24: P1=89; MWSS row 13 (standard): P1=43.
-//   LWSS row 26: P1=45; LWSS row 13: P1=16.
-//   GliderUp row 23, col 14: P1=8. Blinker: P1=0.
-// Threshold 30: MWSS always passes (43–89); LWSS at optimal rows passes (37–49);
-//   LWSS mid-rows (16) and GliderUp (8) fail; Blinker (0) fails.
-// Headroom: MWSS optimal = 89, threshold 30 → 3× headroom.
+//   MWSS rows 22/23/24: P1=70/73/89 — pass threshold 70.
+//   All other MWSS rows: P1≤69 — fail.
+//   LWSS best rows (1, 26): P1=49/45 — fail.
+//   GliderUp: P1=8. Blinker: P1=0.
+// Threshold 70: only MWSS aimed at the L arm (rows 22–24) passes.
+// Standard mid-row MWSS (43) and all LWSS/GliderUp fail.
+// Headroom: MWSS optimal (row 24) = 89, threshold 70 → 27% headroom.
 // ---------------------------------------------------------------------------
 const P7: PuzzleDefinition = {
   id: "score-through-the-l",
   title: "Score Through the L",
-  objective: "Score at least 30 points. You may place 1 card.",
+  objective: "Score at least 70 points. You may place 1 card.",
   hint: "A wide pattern travelling through the L hits many score cells in a row.",
   gridRows: PUZZLE_ROWS,
   gridCols: PUZZLE_COLS,
@@ -324,76 +325,66 @@ const P7: PuzzleDefinition = {
     { kind: "simulate", generations: 100 },
   ],
 
-  criteria: { minOwnScore: 30 },
+  criteria: { minOwnScore: 70 },
 
   placementRegion: { x: 3, y: 0, w: 14, h: PUZZLE_ROWS, color: "" },
 };
 
 // ---------------------------------------------------------------------------
-// P8 — Clear the Path (offensive, no-L, multi-card, glider-clearing mechanic)
-// Grid: 60×36 (wider to give more room for barrier placement and clearing).
+// P8 — Chain Reaction (offensive, no-L, 2-card, blinker collision mechanic)
+// Grid: 60×36.
 //
-// Two initial barriers in the neutral zone:
-//   Upper: Block at (6, 21) — static obstacle, blocks rows 3–8.
-//   Lower: Blinker at (27, 21) — oscillating obstacle, blocks rows 24–29.
-// Free middle lane: rows 10–18 (verified scores 99 per MWSS).
+// Three Blinkers in P2 zone (col 44, rows 4/16/28) — equally spaced vertically.
+// The blinkers are oscillating obstacles in enemy territory. When hit by a
+// spaceship at the right row, they create a massive chain reaction that floods
+// the score column. Wrong rows produce little or no score.
 //
-// Lesson: clear-then-score. A GliderDown from P1 zone can destroy the upper
-// Block, opening a second scoring lane. A single-card middle MWSS scores 99
-// (just below threshold 100); clearing the upper Block and scoring two lanes
-// reaches 114–125.
+// Lesson: precision + repetition. One well-aimed MWSS almost scores enough
+// (149 — just 1 short of threshold). Two well-aimed MWSSes score 212+.
+// The blinkers reward finding the correct interaction row.
 //
-// Verified (col-21 design, 140 gens):
-//   Solo MWSS middle (rows 10–18): P1=99 → fails threshold 100.
-//   GliderDown(1,16)+MWSS(3,5)+MWSS(13,5): P1=125 → passes.
-//   GliderDown(2,17)+MWSS(3,5)+MWSS(13,5): P1=125 → passes.
-//   GliderDown working positions in P1 zone: (1,16),(2,17),(4,19),(5,20).
-//
-// FLAG: the lower Blinker barrier does not have a reliable single-glider
-// clearing solution from P1 zone (unlike the upper Block). The Blinker is
-// therefore an obstruction that the player routes around (via the middle free
-// lane) rather than clears. The "zwei Barriere-Typen" distinction is preserved:
-// Block = static clearable; Blinker = oscillating, harder to interact with.
+// Verified (col 44, Zeilen 4/16/28, 160 gens):
+//   Solo MWSS row 7:  P1=149 → fails (< 150).
+//   Solo MWSS row 14: P1=31  → fails.
+//   Solo LWSS row 6:  P1=92  → fails.
+//   MWSS(7,5)+MWSS(19,5): P1=212 → passes ✅.
+//   MWSS(7,5)+MWSS(26,5): P1=180 → passes ✅.
+//   MWSS(19,5)+LWSS(6,5): P1=234 → passes ✅.
+//   Blinker/GliderDown: P1=0 → fails.
 // ---------------------------------------------------------------------------
 const P8: PuzzleDefinition = {
-  id: "clear-the-path",
-  title: "Clear the Path",
-  objective: "Clear a path through the barriers, then score. You may place up to 3 cards.",
-  hint: "Spaceships can break through obstacles — but they are destroyed in the process. Plan your shots: clear first, then score.",
+  id: "chain-reaction",
+  title: "Chain Reaction",
+  objective: "Score at least 150 points. You may place up to 2 cards.",
+  hint: "The blinkers in enemy territory react explosively when hit at the right angle. One shot almost scores enough — two should do it.",
   gridRows: P8_ROWS,
   gridCols: P8_COLS,
   playerSide: 1,
 
-  // Upper Block: static, clearable with a GliderDown from P1 zone.
-  // Lower Blinker: oscillating, different obstacle character.
+  // Three Blinkers in P2 zone, evenly spread top/middle/bottom.
   initialPlacements: [
-    { patternIndex: BLOCK_INDEX, row: 6, col: 21 },
-    { patternIndex: BLINKER_INDEX, row: 27, col: 21 },
+    { patternIndex: BLINKER_INDEX, row: 4,  col: 44 },
+    { patternIndex: BLINKER_INDEX, row: 16, col: 44 },
+    { patternIndex: BLINKER_INDEX, row: 28, col: 44 },
   ],
 
-  // Timeline: place up to 3 cards, then simulate 140 gens.
-  // Longer sim than usual (barriers slow the action down — clearing + scoring
-  // takes more generations than a direct strike).
+  // Timeline: place up to 2 cards, then simulate 160 gens.
   timeline: [
     {
       kind: "place",
-      // Pool: 1× GliderDown (clearer), 3× MWSS (heavy hitters),
-      // 2× LWSS (lighter option), 1× Blinker (decoy — stationary, scores 0).
       pool: [
-        GLIDER_DOWN_INDEX,
         MWSS_INDEX, MWSS_INDEX, MWSS_INDEX,
         LWSS_INDEX, LWSS_INDEX,
+        GLIDER_DOWN_INDEX,
         BLINKER_INDEX,
       ],
-      maxCards: 3,
+      maxCards: 2,
     },
-    { kind: "simulate", generations: 140 },
+    { kind: "simulate", generations: 160 },
   ],
 
-  criteria: { minOwnScore: 100 },
+  criteria: { minOwnScore: 150 },
 
-  // P1 zone for 60×36 grid: endzoneWidth=3, zoneWidth=floor((60-6)/3)=18
-  // P1 zone: cols 3–20 (w=18).
   placementRegion: { x: 3, y: 0, w: 18, h: P8_ROWS, color: "" },
 };
 
