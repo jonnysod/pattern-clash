@@ -33,6 +33,11 @@ export function createDOMRefs() {
     maxGenerations: getElement<HTMLSpanElement>("maxGenerations"),
     simSkipHint: getElement<HTMLSpanElement>("simSkipHint"),
 
+    // Post-game freerun sandbox controls
+    freerunBar: getElement<HTMLDivElement>("freerunBar"),
+    freerunPlayBtn: getElement<HTMLButtonElement>("freerunPlayBtn"),
+    freerunStatus: getElement<HTMLSpanElement>("freerunStatus"),
+
     // Card hand containers (below canvas, one per player)
     cardHand1: getElement<HTMLDivElement>("cardHand1"),
     cardHand2: getElement<HTMLDivElement>("cardHand2"),

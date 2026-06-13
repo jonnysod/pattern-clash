@@ -185,6 +185,12 @@ export class Game {
     return this.engine.detectStablePeriod();
   }
 
+  // Score-free Conway step for the post-game freerun sandbox.
+  // No hit-detection, no buckets, no ScoreEvents — score stays frozen.
+  stepOnly(): void {
+    this.engine.stepOnly();
+  }
+
   // Force-flush all pending score buckets, credit the points to player scores,
   // and return the events for scoreEffects. Used by the early-termination path
   // in the sim loop — the engine's own end-of-sim flush won't run in that case.

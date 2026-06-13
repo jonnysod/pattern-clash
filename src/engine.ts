@@ -213,6 +213,32 @@ export class Engine {
     return 0;
   }
 
+  // Advance the grid one Conway generation without any score-pipeline work.
+  // No hit-detection, no buckets, no ScoreEvents, no force-flush concerns.
+  // Intended for the post-game freerun sandbox where scoring is frozen.
+  // Also updates the stability-detection history so detectStablePeriod() works.
+  stepOnly(): void {
+    this.currentGeneration++;
+    const newGrid: boolean[][] = this.createEmptyGrid();
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        const neighbors = this.countNeighbors(row, col);
+        const isAlive = this.grid[row]![col];
+        if (isAlive && (neighbors === 2 || neighbors === 3)) {
+          newGrid[row]![col] = true;
+        } else if (!isAlive && neighbors === 3) {
+          newGrid[row]![col] = true;
+        }
+      }
+    }
+    this.prevPrevGrid = this.prevGrid;
+    this.prevGrid = this.grid;
+    this.grid = newGrid;
+    // No hits in score-free mode.
+    this.hadHitsTwoTicksAgo = this.hadHitsLastTick;
+    this.hadHitsLastTick = false;
+  }
+
   isSimulationComplete(): boolean {
     return this.currentGeneration >= this.simGenerations;
   }

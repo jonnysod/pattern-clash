@@ -53,6 +53,10 @@ export class UIController {
   // Simulation
   private simTimerId: number | null = null;
 
+  // Post-game freerun sandbox
+  private freerunTimerId: number | null = null;
+  private freerunPlaying: boolean = false;
+
   // Event handler references (for removeEventListener)
   private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
   private mouseLeaveHandler: (() => void) | null = null;
@@ -131,11 +135,17 @@ export class UIController {
     // Winner overlay buttons
     this.dom.showBoardBtn.addEventListener("click", () => {
       this.dom.winnerOverlay.style.display = "none";
+      this.enterFreerun();
     });
     this.dom.restartBtn.addEventListener("click", () => {
+      this.stopFreerun();
+      this.dom.freerunBar.style.display = "none";
       this.dom.winnerOverlay.style.display = "none";
       this.cleanup();
       if (this.onRestartRequested) this.onRestartRequested();
+    });
+    this.dom.freerunPlayBtn.addEventListener("click", () => {
+      this.toggleFreerun();
     });
 
     // Canvas mouse tracking for ghost preview + placement click
@@ -149,6 +159,7 @@ export class UIController {
 
   private cleanup(): void {
     this.stopSimulation();
+    this.stopFreerun();
     this.syncManager.stop();
     this.syncManager.onRemoteAction = null;
     if (this.mouseMoveHandler) {
@@ -561,6 +572,74 @@ export class UIController {
       this.simTimerId = null;
     }
   }
+  //#endregion
+
+  //#region Freerun (post-game sandbox)
+  private static readonly FREERUN_STABLE_HOLD_MS = 500;
+
+  // Called by "Show Board" — reveals the frozen end-board and arms the freerun UI.
+  private enterFreerun(): void {
+    this.dom.freerunBar.style.display = "block";
+    this.setFreerunPaused();
+  }
+
+  private toggleFreerun(): void {
+    if (this.freerunPlaying) {
+      this.stopFreerun();
+    } else {
+      this.startFreerun();
+    }
+  }
+
+  private startFreerun(): void {
+    if (this.freerunPlaying) return;
+    this.freerunPlaying = true;
+    this.dom.freerunPlayBtn.textContent = "⏸ Pause";
+    this.dom.freerunStatus.textContent = "Running…";
+    const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
+    const tick = () => {
+      if (!this.freerunPlaying) return;
+      // Score-free tick — no hit-detection, no buckets, no ScoreEvents.
+      this.game.stepOnly();
+      this.renderer.drawGrid();
+      this.updateStatusBar();
+
+      const period = this.game.detectStablePeriod();
+      if (period === 1 || period === 2) {
+        // Auto-pause on stability.
+        this.stopFreerun();
+        this.dom.freerunStatus.textContent = "⚡ Stable";
+        window.setTimeout(
+          () => {
+            if (!this.freerunPlaying) {
+              this.dom.freerunStatus.textContent =
+                "Paused — press Play to continue";
+            }
+          },
+          UIController.FREERUN_STABLE_HOLD_MS,
+        );
+        return;
+      }
+
+      this.freerunTimerId = window.setTimeout(tick, tickMs);
+    };
+    this.freerunTimerId = window.setTimeout(tick, tickMs);
+  }
+
+  private stopFreerun(): void {
+    this.freerunPlaying = false;
+    if (this.freerunTimerId !== null) {
+      clearTimeout(this.freerunTimerId);
+      this.freerunTimerId = null;
+    }
+    this.setFreerunPaused();
+  }
+
+  private setFreerunPaused(): void {
+    this.dom.freerunPlayBtn.textContent = "▶ Play";
+    this.dom.freerunStatus.textContent = "Paused — inspect the final board";
+  }
+  //#endregion
 
   private onSimulationComplete(): void {
     logInfo(
