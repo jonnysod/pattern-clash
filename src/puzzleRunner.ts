@@ -34,6 +34,7 @@ export interface PuzzleDOMRefs {
   hint: HTMLParagraphElement;
   doneBtn: HTMLButtonElement;
   generationCounter: HTMLSpanElement;
+  simSkipHint: HTMLSpanElement;
   opponentScore: HTMLSpanElement;
   resultOverlay: HTMLDivElement;
   resultTitle: HTMLHeadingElement;
@@ -334,7 +335,51 @@ export class PuzzleRunner {
       this.flushAndAdvance();
       return;
     }
+
+    // Early-termination: stable grid with no scoring activity.
+    const period = this.engine.detectStablePeriod();
+    if (period === 1 || period === 2) {
+      this.stopSimulation();
+      this.onStabilitySkip(period);
+      return;
+    }
+
     this.scheduleSimTick();
+  }
+
+  // Called when the engine detects a stable period with no pending score hits.
+  // Runs parity-correction ticks, jumps the generation display to the segment
+  // target, shows a brief UX hint, then hands off to the normal flushAndAdvance
+  // path which handles force-flush, hold, and timeline advance.
+  private onStabilitySkip(period: 1 | 2): void {
+    if (!this.engine) return;
+    const target = this.simGenTarget;
+    const current = this.engine.currentGeneration;
+    // Parity correction: run (remaining % period) extra ticks so the end-grid
+    // is bitidentical to a full run. These ticks are guaranteed hit-free.
+    const extra = (target - current) % period;
+    for (let i = 0; i < extra; i++) {
+      this.engine.computeNextGeneration();
+    }
+    // Jump the generation counter to the segment target.
+    this.engine.currentGeneration = target;
+    this.updateGenerationCounter();
+
+    logInfo(
+      `[Puzzle] Stability skip at gen ${current} (period ${period}, target ${target}).`,
+    );
+
+    // Show brief hint, then use the normal flushAndAdvance path.
+    this.dom.simSkipHint.style.display = "inline";
+    // flushAndAdvance already holds for SEGMENT_END_HOLD_MS; hide hint when
+    // the hold fires by scheduling at the same delay.
+    window.setTimeout(
+      () => {
+        this.dom.simSkipHint.style.display = "none";
+      },
+      PuzzleRunner.SEGMENT_END_HOLD_MS,
+    );
+    this.flushAndAdvance();
   }
 
   // Force-flush any pending score buckets at segment end, update the score

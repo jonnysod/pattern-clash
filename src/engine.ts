@@ -39,6 +39,14 @@ export class Engine {
   // Pending score buckets, keyed by `scorer-regionRow-regionCol`.
   private scoreBuckets: Map<string, ScoreBucket> = new Map();
 
+  // Stability detection: hold references to the last two grids and whether
+  // each of the last two ticks produced any score-zone hits.
+  // Nulled by stampCells() and reset() whenever the grid changes externally.
+  private prevGrid: boolean[][] | null = null;
+  private prevPrevGrid: boolean[][] | null = null;
+  private hadHitsLastTick: boolean = false;
+  private hadHitsTwoTicksAgo: boolean = false;
+
   constructor(
     rows: number,
     cols: number,
@@ -57,6 +65,7 @@ export class Engine {
     this.currentGeneration = 0;
     this.scoreEvents = [];
     this.scoreBuckets.clear();
+    this.invalidateStabilityHistory();
   }
 
   // Write a set of cells onto the grid at the given origin.
@@ -74,6 +83,7 @@ export class Engine {
         this.grid[row]![col] = true;
       }
     }
+    this.invalidateStabilityHistory();
   }
 
   // Advance the grid one Conway generation and update score buckets.
@@ -125,6 +135,9 @@ export class Engine {
       }
     }
 
+    // Save grid references for stability detection before replacing this.grid.
+    this.prevPrevGrid = this.prevGrid;
+    this.prevGrid = this.grid;
     this.grid = newGrid;
 
     // 2. Decay phase. Bump silence/age counters on every existing
@@ -175,7 +188,29 @@ export class Engine {
       this.scoreBuckets.clear();
     }
 
+    // Update hit history for stability detection.
+    this.hadHitsTwoTicksAgo = this.hadHitsLastTick;
+    this.hadHitsLastTick = hitsThisTick.size > 0;
+
     return this.scoreEvents;
+  }
+
+  // Check whether the grid has reached a stable period-1 (still life) or
+  // period-2 (oscillator) state with no score-zone hits in the last cycle.
+  // Returns 0 if not stable, 1 for period-1, 2 for period-2.
+  // Requires at least p+1 ticks of history since the last stampCells/reset.
+  detectStablePeriod(): 0 | 1 | 2 {
+    if (this.prevGrid === null) return 0;
+    if (this.hadHitsLastTick) return 0;
+    if (this.gridsEqual(this.grid, this.prevGrid)) return 1;
+    if (
+      this.prevPrevGrid !== null &&
+      !this.hadHitsTwoTicksAgo &&
+      this.gridsEqual(this.grid, this.prevPrevGrid)
+    ) {
+      return 2;
+    }
+    return 0;
   }
 
   isSimulationComplete(): boolean {
@@ -246,5 +281,23 @@ export class Engine {
     const r = Math.floor(row / CONFIG.SCORE_BUCKET_REGION_SIZE);
     const c = Math.floor(col / CONFIG.SCORE_BUCKET_REGION_SIZE);
     return `${scorer}-${r}-${c}`;
+  }
+
+  private gridsEqual(a: boolean[][], b: boolean[][]): boolean {
+    for (let row = 0; row < this.rows; row++) {
+      const aRow = a[row]!;
+      const bRow = b[row]!;
+      for (let col = 0; col < this.cols; col++) {
+        if (aRow[col] !== bRow[col]) return false;
+      }
+    }
+    return true;
+  }
+
+  private invalidateStabilityHistory(): void {
+    this.prevGrid = null;
+    this.prevPrevGrid = null;
+    this.hadHitsLastTick = false;
+    this.hadHitsTwoTicksAgo = false;
   }
 }

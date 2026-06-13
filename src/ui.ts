@@ -486,6 +486,8 @@ export class UIController {
   //#endregion
 
   //#region Simulation
+  private static readonly STABILITY_SKIP_HOLD_MS = 500;
+
   private startSimulation(): void {
     this.stopSimulation();
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
@@ -502,9 +504,55 @@ export class UIController {
         this.onSimulationComplete();
         return;
       }
+
+      // Early-termination: stable grid with no scoring activity.
+      const period = this.game.detectStablePeriod();
+      if (period === 1 || period === 2) {
+        this.stopSimulation();
+        this.onStabilitySkip(period);
+        return;
+      }
+
       this.simTimerId = window.setTimeout(tick, tickMs);
     };
     this.simTimerId = window.setTimeout(tick, tickMs);
+  }
+
+  // Called when the engine detects a stable period with no pending score hits.
+  // Runs parity-correction ticks, force-flushes any pending buckets, jumps the
+  // generation counter to the target, then takes the normal sim-end path.
+  private onStabilitySkip(period: 1 | 2): void {
+    const target = this.game.simGenerations;
+    const current = this.game.currentGeneration;
+    // Parity correction: run (remaining % period) extra ticks so the end-grid
+    // is bitidentical to a full run. These ticks are guaranteed hit-free.
+    const extra = (target - current) % period;
+    for (let i = 0; i < extra; i++) {
+      this.game.computeNextGeneration();
+    }
+    // Force-flush any pending buckets that haven't reached SILENCE_LIMIT yet.
+    const flushEvents = this.game.forceFlushAndApply();
+    if (flushEvents.length > 0) {
+      this.scoreEffects.feed(flushEvents);
+    }
+    // Jump counter to the target generation and refresh displays.
+    this.game.currentGeneration = target;
+    this.updateBudgetScoreDisplay();
+    this.updateStatusBar();
+
+    logInfo(
+      `[Game] Stability skip at gen ${current} (period ${period}). ` +
+        `Score: P1=${this.game.scorePlayer1} P2=${this.game.scorePlayer2}`,
+    );
+
+    // Brief UX signal so the skip is perceptible.
+    this.dom.simSkipHint.style.display = "inline";
+
+    // After the hold, hide the hint and take the normal sim-end path.
+    window.setTimeout(() => {
+      this.dom.simSkipHint.style.display = "none";
+      this.onSimulationComplete();
+    }, UIController.STABILITY_SKIP_HOLD_MS);
   }
 
   private stopSimulation(): void {

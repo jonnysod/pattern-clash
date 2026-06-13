@@ -97,6 +97,7 @@ function buildPuzzleDOMRefs(): PuzzleDOMRefs {
     hint: dom.puzzleHint,
     doneBtn: dom.puzzleDoneBtn,
     generationCounter: dom.puzzleGenerationCounter,
+    simSkipHint: dom.puzzleSimSkipHint,
     opponentScore: dom.puzzleOpponentScore,
     resultOverlay: dom.puzzleResultOverlay,
     resultTitle: dom.puzzleResultTitle,

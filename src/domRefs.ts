@@ -31,6 +31,7 @@ export function createDOMRefs() {
     totalPhases: getElement<HTMLSpanElement>("totalPhases"),
     generationCounter: getElement<HTMLSpanElement>("generationCounter"),
     maxGenerations: getElement<HTMLSpanElement>("maxGenerations"),
+    simSkipHint: getElement<HTMLSpanElement>("simSkipHint"),
 
     // Card hand containers (below canvas, one per player)
     cardHand1: getElement<HTMLDivElement>("cardHand1"),
@@ -98,6 +99,7 @@ export function createDOMRefs() {
     puzzleGenerationCounter: getElement<HTMLSpanElement>(
       "puzzleGenerationCounter",
     ),
+    puzzleSimSkipHint: getElement<HTMLSpanElement>("puzzleSimSkipHint"),
     puzzleOpponentScore: getElement<HTMLSpanElement>("puzzleOpponentScore"),
     puzzleCanvas: getElement<HTMLCanvasElement>("puzzleCanvas"),
     puzzleCardHand1: getElement<HTMLDivElement>("puzzleCardHand1"),

@@ -181,6 +181,25 @@ export class Game {
     return this.engine.isSimulationComplete();
   }
 
+  detectStablePeriod(): 0 | 1 | 2 {
+    return this.engine.detectStablePeriod();
+  }
+
+  // Force-flush all pending score buckets, credit the points to player scores,
+  // and return the events for scoreEffects. Used by the early-termination path
+  // in the sim loop — the engine's own end-of-sim flush won't run in that case.
+  forceFlushAndApply(): ScoreEvent[] {
+    const events = this.engine.forceFlushBuckets();
+    for (const e of events) {
+      if (e.scorer === 1) {
+        this.scorePlayer1 += e.points;
+      } else {
+        this.scorePlayer2 += e.points;
+      }
+    }
+    return events;
+  }
+
   // Fast grid hash (kept for sync debugging).
   gridHash(): number {
     return this.engine.gridHash();
