@@ -7,7 +7,7 @@ export const CONFIG = {
   CANVAS_HEIGHT: 700,
 
   // Game structure
-  PHASE_COUNT: 5, // Number of tactical phases in a full game
+  PHASE_COUNT: 6, // Number of tactical phases in a full game
   SIM_GENERATIONS: 150, // Generations per simulation phase
   ADDITIONAL_INITIAL_BUDGET: 40, // Budget for phase 1
   BUDGET_PER_PHASE: 25, // Points added to each player's budget at the start of each tactical phase
