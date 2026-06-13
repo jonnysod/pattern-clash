@@ -229,6 +229,8 @@ describe("Game — Place Logic", () => {
     expect(game.getPhaseStarter()).toBe(2);
     game.currentPhaseNumber = 5;
     expect(game.getPhaseStarter()).toBe(1);
+    game.currentPhaseNumber = 6;
+    expect(game.getPhaseStarter()).toBe(2);
   });
 
   it("applyPlacement resolves a placeholder card's patternIndex", () => {
