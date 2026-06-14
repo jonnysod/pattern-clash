@@ -11,6 +11,8 @@
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
+import { BotController } from "./botController.js";
+import { DummyBotPolicy } from "./botPolicy.js";
 import { LocalSyncManager, OnlineSyncManager } from "./syncManager.js";
 import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
@@ -57,6 +59,30 @@ function startLocalGame(): void {
     syncManager,
     "both", // hotseat
     CONFIG.CELL_SIZE,
+  );
+  uiController.onRestartRequested = () => {
+    uiController = null;
+    showLobby();
+  };
+}
+
+function startBotGame(): void {
+  dom.startOverlay.style.display = "none";
+  game.reset();
+  renderer.drawGrid();
+
+  const syncManager = new LocalSyncManager();
+  const policy = new DummyBotPolicy(game);
+  const botController = new BotController(game, syncManager, policy);
+
+  uiController = new UIController(
+    game,
+    dom,
+    renderer,
+    syncManager,
+    1, // human is P1, bot is P2
+    CONFIG.CELL_SIZE,
+    botController,
   );
   uiController.onRestartRequested = () => {
     uiController = null;
@@ -271,6 +297,10 @@ async function onCancelWaiting(): Promise<void> {
 //#region Lobby & Puzzle Event Handlers
 dom.localGameBtn.addEventListener("click", () => {
   startLocalGame();
+});
+
+dom.botGameBtn.addEventListener("click", () => {
+  startBotGame();
 });
 
 dom.onlineGameBtn.addEventListener("click", () => {

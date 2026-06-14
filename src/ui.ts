@@ -15,6 +15,7 @@
 import type { Player, SyncAction } from "./types.js";
 import type { DOMRefs } from "./domRefs.js";
 import type { SyncManager } from "./syncManager.js";
+import type { BotController } from "./botController.js";
 import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { BuyOverlay } from "./buyOverlay.js";
@@ -62,6 +63,8 @@ export class UIController {
   private mouseLeaveHandler: (() => void) | null = null;
   private clickHandler: ((e: MouseEvent) => void) | null = null;
 
+  private botController: BotController | null = null;
+
   // Restart callback (set by main.ts to return to the start overlay)
   onRestartRequested: (() => void) | null = null;
 
@@ -79,6 +82,7 @@ export class UIController {
     syncManager: SyncManager,
     localPlayer: LocalPlayerMode,
     cellSize: number,
+    botController?: BotController,
   ) {
     this.game = game;
     this.dom = dom;
@@ -87,6 +91,7 @@ export class UIController {
     this.localPlayer = localPlayer;
     this.cellSize = cellSize;
 
+    this.botController = botController ?? null;
     this.buyOverlay = new BuyOverlay(game, dom);
     this.cardHand = new CardHand(game, dom.cardHand1, dom.cardHand2);
     this.scoreEffects = new ScoreEffects(dom.gameCanvas, cellSize);
@@ -160,6 +165,7 @@ export class UIController {
   private cleanup(): void {
     this.stopSimulation();
     this.stopFreerun();
+    this.botController?.stop();
     this.syncManager.stop();
     this.syncManager.onRemoteAction = null;
     if (this.mouseMoveHandler) {
@@ -353,6 +359,10 @@ export class UIController {
     }
     this.updateActivePlayerIndicator(this.activePlacer);
     this.refreshHoverPreview();
+
+    if (this.botController && this.activePlacer === 2) {
+      this.botController.schedulePlacement();
+    }
   }
 
   // Simple swap; beginTurn() handles the empty-hand case.
@@ -714,6 +724,14 @@ export class UIController {
         if (this.game.bothPlayersConfirmed() && this.game.isBuyPhase) {
           this.game.finalizeBuyPhase();
           this.startPlacePhase();
+        } else if (
+          this.botController &&
+          action.player === 1 &&
+          !this.game.isBuyConfirmed(2)
+        ) {
+          // Human just confirmed; bot hasn't yet. executeBuy() synchronously
+          // sends buyConfirm(P2), which re-enters applyAction and finalizes.
+          this.botController.executeBuy();
         }
         break;
 

@@ -73,6 +73,7 @@ export function createDOMRefs() {
     startOverlay: getElement<HTMLDivElement>("startOverlay"),
     lobbyModeSelect: getElement<HTMLDivElement>("lobbyModeSelect"),
     localGameBtn: getElement<HTMLButtonElement>("localGameBtn"),
+    botGameBtn: getElement<HTMLButtonElement>("botGameBtn"),
     onlineGameBtn: getElement<HTMLButtonElement>("onlineGameBtn"),
     lobbyOnlineChoice: getElement<HTMLDivElement>("lobbyOnlineChoice"),
     createGameBtn: getElement<HTMLButtonElement>("createGameBtn"),
