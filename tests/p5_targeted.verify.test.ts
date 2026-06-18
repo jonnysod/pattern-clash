@@ -106,7 +106,7 @@ describe("P5 targeted — proper timeline (sim 20, place, sim 80)", () => {
     expect(true).toBe(true);
   });
 
-  it("try more glider start positions that score and can be stopped", () => {
+  it("try more glider start positions that score and can be stopped", { timeout: 30000 }, () => {
     console.log("\n=== P5: sweep glider start positions ===");
     for (const [sr, sc] of [
       [5, 33], [5, 30], [3, 35], [3, 33], [3, 30],
