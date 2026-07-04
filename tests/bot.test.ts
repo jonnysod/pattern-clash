@@ -128,7 +128,7 @@ describe("DummyBotPolicy — choosePlacement", () => {
         opponentScore: 0,
       };
 
-      const { row, col } = policy.choosePlacement(view, card);
+      const { row, col } = policy.choosePlacementForCard(view, card);
 
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
       expect(
@@ -274,7 +274,7 @@ describe("Bot — headless full game", () => {
         } else {
           // Bot places via policy
           const botPolicy = new DummyBotPolicy(game);
-          const { row, col } = botPolicy.choosePlacement(
+          const { row, col } = botPolicy.choosePlacementForCard(
             {
               grid: game.grid,
               phase,
