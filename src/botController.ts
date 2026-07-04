@@ -70,20 +70,20 @@ export class BotController {
   }
 
   private executePlacement(): void {
-    const hand = this.game.getHand(2);
-    const card = hand[0];
-    if (!card) return;
-
     const view = this.buildView();
-    const { row, col } = this.policy.choosePlacement(view, card);
+    const result = this.policy.choosePlacement(view);
+    if (!result) return;
+
+    const card = this.game.getCardById(2, result.cardId);
+    if (!card) return;
 
     this.syncManager.sendAction({
       type: "placement",
       player: 2,
       cardId: card.id,
       patternIndex: card.patternIndex,
-      row,
-      col,
+      row: result.row,
+      col: result.col,
     });
   }
 

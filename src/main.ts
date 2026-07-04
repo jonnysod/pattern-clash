@@ -12,7 +12,7 @@ import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
 import { BotController } from "./botController.js";
-import { RuleBasedBotPolicy } from "./botPolicy.js";
+import { SimRankingBotPolicy } from "./botPolicy.js";
 import { LocalSyncManager, OnlineSyncManager } from "./syncManager.js";
 import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
@@ -72,7 +72,7 @@ function startBotGame(): void {
   renderer.drawGrid();
 
   const syncManager = new LocalSyncManager();
-  const policy = new RuleBasedBotPolicy(game);
+  const policy = new SimRankingBotPolicy(game);
   const botController = new BotController(game, syncManager, policy);
 
   uiController = new UIController(
