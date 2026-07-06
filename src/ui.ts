@@ -63,6 +63,17 @@ export class UIController {
   private mouseLeaveHandler: (() => void) | null = null;
   private clickHandler: ((e: MouseEvent) => void) | null = null;
 
+  // Persistent-button handler references. These buttons live outside this
+  // controller's own DOM subtree and outlive it across restarts — without
+  // storing and removing these, each new UIController stacks another
+  // listener onto the same buttons (e.g. N surrender confirms after N games).
+  private switchOverlayReadyHandler: (() => void) | null = null;
+  private surrender1Handler: (() => void) | null = null;
+  private surrender2Handler: (() => void) | null = null;
+  private showBoardHandler: (() => void) | null = null;
+  private restartHandler: (() => void) | null = null;
+  private freerunPlayHandler: (() => void) | null = null;
+
   private botController: BotController | null = null;
 
   // Restart callback (set by main.ts to return to the start overlay)
@@ -126,32 +137,36 @@ export class UIController {
     this.buyOverlay.onConfirm = (player) => this.onBuyConfirmed(player);
     this.cardHand.onCardSelect = (cardId) => this.onCardSelect(cardId);
 
-    this.dom.switchOverlayReadyBtn.addEventListener("click", () => {
-      this.onSwitchReady();
-    });
+    this.switchOverlayReadyHandler = () => this.onSwitchReady();
+    this.dom.switchOverlayReadyBtn.addEventListener(
+      "click",
+      this.switchOverlayReadyHandler,
+    );
 
-    this.dom.surrender1Btn.addEventListener("click", () =>
-      this.handleSurrender(1),
-    );
-    this.dom.surrender2Btn.addEventListener("click", () =>
-      this.handleSurrender(2),
-    );
+    this.surrender1Handler = () => this.handleSurrender(1);
+    this.dom.surrender1Btn.addEventListener("click", this.surrender1Handler);
+    this.surrender2Handler = () => this.handleSurrender(2);
+    this.dom.surrender2Btn.addEventListener("click", this.surrender2Handler);
 
     // Winner overlay buttons
-    this.dom.showBoardBtn.addEventListener("click", () => {
+    this.showBoardHandler = () => {
       this.dom.winnerOverlay.style.display = "none";
       this.enterFreerun();
-    });
-    this.dom.restartBtn.addEventListener("click", () => {
+    };
+    this.dom.showBoardBtn.addEventListener("click", this.showBoardHandler);
+    this.restartHandler = () => {
       this.stopFreerun();
       this.dom.freerunBar.style.display = "none";
       this.dom.winnerOverlay.style.display = "none";
       this.cleanup();
       if (this.onRestartRequested) this.onRestartRequested();
-    });
-    this.dom.freerunPlayBtn.addEventListener("click", () => {
-      this.toggleFreerun();
-    });
+    };
+    this.dom.restartBtn.addEventListener("click", this.restartHandler);
+    this.freerunPlayHandler = () => this.toggleFreerun();
+    this.dom.freerunPlayBtn.addEventListener(
+      "click",
+      this.freerunPlayHandler,
+    );
 
     // Canvas mouse tracking for ghost preview + placement click
     this.mouseMoveHandler = (e) => this.onCanvasMouseMove(e);
@@ -183,6 +198,40 @@ export class UIController {
     if (this.clickHandler) {
       this.dom.gameCanvas.removeEventListener("click", this.clickHandler);
     }
+    if (this.switchOverlayReadyHandler) {
+      this.dom.switchOverlayReadyBtn.removeEventListener(
+        "click",
+        this.switchOverlayReadyHandler,
+      );
+    }
+    if (this.surrender1Handler) {
+      this.dom.surrender1Btn.removeEventListener(
+        "click",
+        this.surrender1Handler,
+      );
+    }
+    if (this.surrender2Handler) {
+      this.dom.surrender2Btn.removeEventListener(
+        "click",
+        this.surrender2Handler,
+      );
+    }
+    if (this.showBoardHandler) {
+      this.dom.showBoardBtn.removeEventListener(
+        "click",
+        this.showBoardHandler,
+      );
+    }
+    if (this.restartHandler) {
+      this.dom.restartBtn.removeEventListener("click", this.restartHandler);
+    }
+    if (this.freerunPlayHandler) {
+      this.dom.freerunPlayBtn.removeEventListener(
+        "click",
+        this.freerunPlayHandler,
+      );
+    }
+    this.buyOverlay.destroy();
     this.cardHand.clear();
     this.scoreEffects.clear();
   }

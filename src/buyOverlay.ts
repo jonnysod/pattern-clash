@@ -32,15 +32,34 @@ export class BuyOverlay {
   // Callback when the player confirms their buy
   onConfirm: ((player: Player) => void) | null = null;
 
+  private confirmHandler: (() => void) | null = null;
+
   constructor(game: Game, dom: DOMRefs) {
     this.game = game;
     this.dom = dom;
 
-    this.dom.buyOverlayConfirmBtn.addEventListener("click", () => {
+    this.confirmHandler = () => {
       if (this.currentPlayer !== null && this.onConfirm) {
         this.onConfirm(this.currentPlayer);
       }
-    });
+    };
+    this.dom.buyOverlayConfirmBtn.addEventListener(
+      "click",
+      this.confirmHandler,
+    );
+  }
+
+  // Removes the confirm-button listener. buyOverlayConfirmBtn is a
+  // persistent DOM node shared across UIController restarts — without this,
+  // each new BuyOverlay instance stacks another listener onto it.
+  destroy(): void {
+    if (this.confirmHandler) {
+      this.dom.buyOverlayConfirmBtn.removeEventListener(
+        "click",
+        this.confirmHandler,
+      );
+      this.confirmHandler = null;
+    }
   }
 
   show(player: Player): void {
