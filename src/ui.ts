@@ -589,24 +589,17 @@ export class UIController {
   }
 
   // Called when the engine detects a stable period with no pending score hits.
-  // Runs parity-correction ticks, force-flushes any pending buckets, jumps the
-  // generation counter to the target, then takes the normal sim-end path.
+  // Delegates to Game.skipToGeneration() (parity ticks + trailing force-flush,
+  // credited and returned as one batch), feeds every event to scoreEffects so
+  // displayed floaters stay in sync with the score counter, then takes the
+  // normal sim-end path.
   private onStabilitySkip(period: 1 | 2): void {
     const target = this.game.simGenerations;
     const current = this.game.currentGeneration;
-    // Parity correction: run (remaining % period) extra ticks so the end-grid
-    // is bitidentical to a full run. These ticks are guaranteed hit-free.
-    const extra = (target - current) % period;
-    for (let i = 0; i < extra; i++) {
-      this.game.computeNextGeneration();
+    const events = this.game.skipToGeneration(target, period);
+    if (events.length > 0) {
+      this.scoreEffects.feed(events);
     }
-    // Force-flush any pending buckets that haven't reached SILENCE_LIMIT yet.
-    const flushEvents = this.game.forceFlushAndApply();
-    if (flushEvents.length > 0) {
-      this.scoreEffects.feed(flushEvents);
-    }
-    // Jump counter to the target generation and refresh displays.
-    this.game.currentGeneration = target;
     this.updateBudgetScoreDisplay();
     this.updateStatusBar();
 

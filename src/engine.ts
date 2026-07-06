@@ -93,52 +93,7 @@ export class Engine {
     this.currentGeneration++;
     this.scoreEvents = [];
 
-    const newGrid: boolean[][] = this.createEmptyGrid();
-    const hitsThisTick = new Set<string>();
-
-    // 1. Conway step. Cells born in a score zone don't credit points
-    //    immediately — they accumulate into a regional bucket.
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) {
-        const neighbors = this.countNeighbors(row, col);
-        const isAlive = this.grid[row]![col];
-
-        if (isAlive && (neighbors === 2 || neighbors === 3)) {
-          newGrid[row]![col] = true;
-        } else if (!isAlive && neighbors === 3) {
-          newGrid[row]![col] = true;
-
-          const scoreResult = this.zones.isScoreCell(row, col);
-          if (scoreResult.scores && scoreResult.scorer) {
-            const scorer = scoreResult.scorer;
-            const key = this.regionKey(row, col, scorer);
-            hitsThisTick.add(key);
-            let bucket = this.scoreBuckets.get(key);
-            if (!bucket) {
-              bucket = {
-                scorer,
-                points: 0,
-                row,
-                col,
-                silenceCounter: 0,
-                ageCounter: 0,
-              };
-              this.scoreBuckets.set(key, bucket);
-            }
-            bucket.points += CONFIG.SCORE_POINTS;
-            // Track most recent hit position — that's where the
-            // floating "+N" will pop on flush.
-            bucket.row = row;
-            bucket.col = col;
-          }
-        }
-      }
-    }
-
-    // Save grid references for stability detection before replacing this.grid.
-    this.prevPrevGrid = this.prevGrid;
-    this.prevGrid = this.grid;
-    this.grid = newGrid;
+    const hitsThisTick = this.stepGrid(true);
 
     // 2. Decay phase. Bump silence/age counters on every existing
     //    bucket, mark expired ones for flush.
@@ -164,12 +119,7 @@ export class Engine {
     }
     for (const key of expiredKeys) {
       const bucket = this.scoreBuckets.get(key)!;
-      this.scoreEvents.push({
-        row: bucket.row,
-        col: bucket.col,
-        scorer: bucket.scorer,
-        points: bucket.points,
-      });
+      this.scoreEvents.push(this.bucketToEvent(bucket));
       this.scoreBuckets.delete(key);
     }
 
@@ -178,12 +128,7 @@ export class Engine {
     //    dropped.
     if (this.currentGeneration >= this.simGenerations) {
       for (const bucket of this.scoreBuckets.values()) {
-        this.scoreEvents.push({
-          row: bucket.row,
-          col: bucket.col,
-          scorer: bucket.scorer,
-          points: bucket.points,
-        });
+        this.scoreEvents.push(this.bucketToEvent(bucket));
       }
       this.scoreBuckets.clear();
     }
@@ -219,28 +164,94 @@ export class Engine {
   // Also updates the stability-detection history so detectStablePeriod() works.
   stepOnly(): void {
     this.currentGeneration++;
-    const newGrid: boolean[][] = this.createEmptyGrid();
-    for (let row = 0; row < this.rows; row++) {
-      for (let col = 0; col < this.cols; col++) {
-        const neighbors = this.countNeighbors(row, col);
-        const isAlive = this.grid[row]![col];
-        if (isAlive && (neighbors === 2 || neighbors === 3)) {
-          newGrid[row]![col] = true;
-        } else if (!isAlive && neighbors === 3) {
-          newGrid[row]![col] = true;
-        }
-      }
-    }
-    this.prevPrevGrid = this.prevGrid;
-    this.prevGrid = this.grid;
-    this.grid = newGrid;
+    this.stepGrid(false);
     // No hits in score-free mode.
     this.hadHitsTwoTicksAgo = this.hadHitsLastTick;
     this.hadHitsLastTick = false;
   }
 
+  // Shared Conway step: computes the next grid and swaps it in, updating the
+  // stability-detection grid history. When trackHits is true, births in a
+  // score zone accumulate into scoreBuckets and the returned set holds the
+  // region keys hit this tick (used by computeNextGeneration's decay phase);
+  // when false (stepOnly's score-free freerun mode), the set is always empty
+  // and scoreBuckets is left untouched.
+  private stepGrid(trackHits: boolean): Set<string> {
+    const newGrid: boolean[][] = this.createEmptyGrid();
+    const hitsThisTick = new Set<string>();
+
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        const neighbors = this.countNeighbors(row, col);
+        const isAlive = this.grid[row]![col];
+
+        if (isAlive && (neighbors === 2 || neighbors === 3)) {
+          newGrid[row]![col] = true;
+        } else if (!isAlive && neighbors === 3) {
+          newGrid[row]![col] = true;
+
+          if (trackHits) {
+            const scoreResult = this.zones.isScoreCell(row, col);
+            if (scoreResult.scores && scoreResult.scorer) {
+              const scorer = scoreResult.scorer;
+              const key = this.regionKey(row, col, scorer);
+              hitsThisTick.add(key);
+              let bucket = this.scoreBuckets.get(key);
+              if (!bucket) {
+                bucket = {
+                  scorer,
+                  points: 0,
+                  row,
+                  col,
+                  silenceCounter: 0,
+                  ageCounter: 0,
+                };
+                this.scoreBuckets.set(key, bucket);
+              }
+              bucket.points += CONFIG.SCORE_POINTS;
+              // Track most recent hit position — that's where the
+              // floating "+N" will pop on flush.
+              bucket.row = row;
+              bucket.col = col;
+            }
+          }
+        }
+      }
+    }
+
+    // Save grid references for stability detection before replacing this.grid.
+    this.prevPrevGrid = this.prevGrid;
+    this.prevGrid = this.grid;
+    this.grid = newGrid;
+
+    return hitsThisTick;
+  }
+
   isSimulationComplete(): boolean {
     return this.currentGeneration >= this.simGenerations;
+  }
+
+  // Jump forward to targetGeneration once detectStablePeriod() has fired.
+  // Runs the few parity-correction ticks needed ((target - current) % period)
+  // so the end-grid stays bitidentical to a full run, force-flushes whatever
+  // buckets are still pending after that, then sets currentGeneration directly
+  // rather than ticking the rest of the way. Returns every ScoreEvent emitted
+  // along the way — parity-tick flushes included — so callers can credit
+  // scores and feed floaters exactly as they would for a normal tick.
+  //
+  // Safe against double-crediting when a parity tick lands exactly on
+  // simGenerations: computeNextGeneration()'s own end-of-sim flush already
+  // empties scoreBuckets in that case, so the trailing forceFlushBuckets()
+  // call below simply finds nothing left.
+  skipToGeneration(targetGeneration: number, period: 1 | 2): ScoreEvent[] {
+    const events: ScoreEvent[] = [];
+    const extra = (targetGeneration - this.currentGeneration) % period;
+    for (let i = 0; i < extra; i++) {
+      events.push(...this.computeNextGeneration());
+    }
+    events.push(...this.forceFlushBuckets());
+    this.currentGeneration = targetGeneration;
+    return events;
   }
 
   // Flush all pending score buckets immediately and return the resulting
@@ -251,16 +262,20 @@ export class Engine {
   forceFlushBuckets(): ScoreEvent[] {
     const events: ScoreEvent[] = [];
     for (const bucket of this.scoreBuckets.values()) {
-      events.push({
-        row: bucket.row,
-        col: bucket.col,
-        scorer: bucket.scorer,
-        points: bucket.points,
-      });
+      events.push(this.bucketToEvent(bucket));
     }
     this.scoreBuckets.clear();
     this.scoreEvents = events;
     return events;
+  }
+
+  private bucketToEvent(bucket: ScoreBucket): ScoreEvent {
+    return {
+      row: bucket.row,
+      col: bucket.col,
+      scorer: bucket.scorer,
+      points: bucket.points,
+    };
   }
 
   // Fast grid hash (kept for sync debugging).

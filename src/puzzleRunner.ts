@@ -348,21 +348,22 @@ export class PuzzleRunner {
   }
 
   // Called when the engine detects a stable period with no pending score hits.
-  // Runs parity-correction ticks, jumps the generation display to the segment
-  // target, shows a brief UX hint, then hands off to the normal flushAndAdvance
-  // path which handles force-flush, hold, and timeline advance.
+  // Delegates to Engine.skipToGeneration() (parity ticks + trailing
+  // force-flush, collected as one batch), credits and displays the events
+  // exactly like a normal tick, then hands off to the normal flushAndAdvance
+  // path which handles hold and timeline advance (its own force-flush finds
+  // nothing left — idempotent).
   private onStabilitySkip(period: 1 | 2): void {
     if (!this.engine) return;
     const target = this.simGenTarget;
     const current = this.engine.currentGeneration;
-    // Parity correction: run (remaining % period) extra ticks so the end-grid
-    // is bitidentical to a full run. These ticks are guaranteed hit-free.
-    const extra = (target - current) % period;
-    for (let i = 0; i < extra; i++) {
-      this.engine.computeNextGeneration();
+    const events = this.engine.skipToGeneration(target, period);
+    this.scoreEffects?.feed(events);
+    for (const e of events) {
+      if (e.scorer === 1) this.p1Score += e.points;
+      else this.p2Score += e.points;
     }
-    // Jump the generation counter to the segment target.
-    this.engine.currentGeneration = target;
+    this.updateOpponentScore();
     this.updateGenerationCounter();
 
     logInfo(
