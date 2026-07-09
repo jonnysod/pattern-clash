@@ -14,6 +14,12 @@ interface EffectHandle {
   timeoutId: number;
 }
 
+// Marks the wrapper/container pair so a later ScoreEffects instance on the
+// same canvas (game restart, puzzle retry) can recognize and reuse them
+// instead of nesting another layer around an already-wrapped canvas.
+const WRAPPER_MARKER = "data-score-effects-wrapper";
+const CONTAINER_MARKER = "data-score-effects-container";
+
 export class ScoreEffects {
   private container: HTMLElement;
   private canvas: HTMLCanvasElement;
@@ -24,8 +30,23 @@ export class ScoreEffects {
     this.canvas = canvas;
     this.cellSize = cellSize;
 
+    const existingWrapper = canvas.parentElement;
+    if (existingWrapper?.hasAttribute(WRAPPER_MARKER)) {
+      // Reuse: this canvas was already wrapped by a prior ScoreEffects
+      // instance. Resize instead of nesting — canvas dimensions can change
+      // between constructions (puzzle grids vary in size).
+      this.container = existingWrapper.querySelector(
+        `:scope > [${CONTAINER_MARKER}]`,
+      ) as HTMLElement;
+      this.container.innerHTML = "";
+      this.container.style.width = canvas.width + "px";
+      this.container.style.height = canvas.height + "px";
+      return;
+    }
+
     // Create a container positioned exactly over the canvas
     this.container = document.createElement("div");
+    this.container.setAttribute(CONTAINER_MARKER, "");
     this.container.style.position = "absolute";
     this.container.style.pointerEvents = "none";
     this.container.style.overflow = "hidden";
@@ -36,6 +57,7 @@ export class ScoreEffects {
 
     // Wrap canvas in a relative container if not already
     const wrapper = document.createElement("div");
+    wrapper.setAttribute(WRAPPER_MARKER, "");
     wrapper.style.position = "relative";
     wrapper.style.display = "inline-block";
     canvas.parentElement!.insertBefore(wrapper, canvas);
