@@ -473,7 +473,6 @@ export class UIController {
       pattern,
       this.activePlacer,
     );
-    // Nachher
     const valid = this.game.zones.isValidPatternPlacement(
       pattern,
       placementCol,
