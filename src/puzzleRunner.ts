@@ -488,6 +488,7 @@ export class PuzzleRunner {
   // -------------------------------------------------------------------------
 
   private wireCanvasEvents(): void {
+    this.unwireCanvasEvents();
     this.mouseMoveHandler = (e) => this.onMouseMove(e);
     this.mouseLeaveHandler = () => this.onMouseLeave();
     this.clickHandler = (e) => this.onCanvasClick(e);
