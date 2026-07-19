@@ -39,10 +39,12 @@ export class Zones {
   readonly endzoneBottomStartRow: number;
 
   readonly rows: number;
+  readonly cols: number;
   readonly lShapes: ZonesConfig["lShapes"];
 
   constructor(cols: number, rows: number, config?: ZonesConfig) {
     this.rows = rows;
+    this.cols = cols;
     this.lShapes = config?.lShapes ?? "both";
 
     const endzoneWidth = config?.endzoneWidth ?? 4;
@@ -197,7 +199,7 @@ export class Zones {
     rects.push({
       x: 0,
       y: 0,
-      w: this.endzoneRightStart + (this.endzoneRightStart - this.rightStart),
+      w: this.cols,
       h: this.rows,
       color: CONFIG.COLOR_ZONE_ENDZONE,
     });
