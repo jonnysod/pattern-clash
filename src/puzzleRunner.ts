@@ -10,6 +10,7 @@ import type {
   PuzzleDefinition,
   PuzzleTimelineEntry,
   BuyInventoryEntry,
+  ScoreEvent,
 } from "./types.js";
 import { Engine } from "./engine.js";
 import { Zones } from "./zones.js";
@@ -322,10 +323,7 @@ export class PuzzleRunner {
 
     const events = this.engine.computeNextGeneration();
     this.scoreEffects?.feed(events);
-    for (const e of events) {
-      if (e.scorer === 1) this.p1Score += e.points;
-      else this.p2Score += e.points;
-    }
+    this.creditEvents(events);
     this.renderer.drawGrid();
     this.updateGenerationCounter();
     this.updateOpponentScore();
@@ -359,10 +357,7 @@ export class PuzzleRunner {
     const current = this.engine.currentGeneration;
     const events = this.engine.skipToGeneration(target, period);
     this.scoreEffects?.feed(events);
-    for (const e of events) {
-      if (e.scorer === 1) this.p1Score += e.points;
-      else this.p2Score += e.points;
-    }
+    this.creditEvents(events);
     this.updateOpponentScore();
     this.updateGenerationCounter();
 
@@ -392,6 +387,13 @@ export class PuzzleRunner {
   // than popping in after the overlay covers the canvas.
   private static readonly SEGMENT_END_HOLD_MS = 1000;
 
+  private creditEvents(events: ScoreEvent[]): void {
+    for (const e of events) {
+      if (e.scorer === 1) this.p1Score += e.points;
+      else this.p2Score += e.points;
+    }
+  }
+
   private flushAndAdvance(): void {
     if (!this.engine) return;
 
@@ -400,10 +402,7 @@ export class PuzzleRunner {
     const flushEvents = this.engine.forceFlushBuckets();
     if (flushEvents.length > 0) {
       this.scoreEffects?.feed(flushEvents);
-      for (const e of flushEvents) {
-        if (e.scorer === 1) this.p1Score += e.points;
-        else this.p2Score += e.points;
-      }
+      this.creditEvents(flushEvents);
       this.updateOpponentScore();
     }
 
