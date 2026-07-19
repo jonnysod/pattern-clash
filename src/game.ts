@@ -185,20 +185,10 @@ export class Game {
     this.engine.stepOnly();
   }
 
-  // Force-flush all pending score buckets, credit the points to player scores,
-  // and return the events for scoreEffects. Used by the early-termination path
-  // in the sim loop — the engine's own end-of-sim flush won't run in that case.
-  forceFlushAndApply(): ScoreEvent[] {
-    const events = this.engine.forceFlushBuckets();
-    this.creditEvents(events);
-    return events;
-  }
-
   // Skip forward to a target generation once the engine has detected a
   // stable period, crediting every score event collected along the way
   // (parity-tick flushes plus the trailing force-flush) to the player
-  // scores. Analogous to forceFlushAndApply, but drives the engine's
-  // consolidated skip path instead of a single force-flush.
+  // scores. Drives the engine's consolidated skip path.
   skipToGeneration(target: number, period: 1 | 2): ScoreEvent[] {
     const events = this.engine.skipToGeneration(target, period);
     this.creditEvents(events);

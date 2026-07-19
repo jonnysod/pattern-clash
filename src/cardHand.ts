@@ -92,10 +92,6 @@ export class CardHand {
     this.render();
   }
 
-  getSelectedCardId(): string | null {
-    return this.selectedCardId;
-  }
-
   // Mark a player's hand container as "waiting for the player to act"
   // (renders a centered message instead of the hand). Used during
   // online buy phase.

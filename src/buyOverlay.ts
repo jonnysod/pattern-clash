@@ -15,7 +15,6 @@ interface PatternRowRefs {
   countDisplay: HTMLSpanElement;
   minusBtn: HTMLButtonElement;
   plusBtn: HTMLButtonElement;
-  priceDisplay: HTMLSpanElement;
 }
 
 export class BuyOverlay {
@@ -129,7 +128,6 @@ export class BuyOverlay {
         countDisplay: row.countDisplay,
         minusBtn: row.minusBtn,
         plusBtn: row.plusBtn,
-        priceDisplay: row.priceDisplay,
       });
     });
   }
@@ -142,7 +140,6 @@ export class BuyOverlay {
     countDisplay: HTMLSpanElement;
     minusBtn: HTMLButtonElement;
     plusBtn: HTMLButtonElement;
-    priceDisplay: HTMLSpanElement;
   } {
     const rowEl = document.createElement("div");
     rowEl.style.cssText =
@@ -166,10 +163,7 @@ export class BuyOverlay {
     nameEl.style.cssText = "font-weight: bold; font-size: 14px;";
     const priceEl = document.createElement("div");
     priceEl.style.cssText = "font-size: 12px; color: #aaa;";
-    priceEl.innerHTML = `Cost: <span data-price>${pattern.cells.length}</span>`;
-    const priceDisplay = priceEl.querySelector(
-      "[data-price]",
-    ) as HTMLSpanElement;
+    priceEl.textContent = `Cost: ${pattern.cells.length}`;
     infoBlock.appendChild(nameEl);
     infoBlock.appendChild(priceEl);
     rowEl.appendChild(infoBlock);
@@ -206,7 +200,7 @@ export class BuyOverlay {
     controls.appendChild(plusBtn);
     rowEl.appendChild(controls);
 
-    return { rowEl, countDisplay, minusBtn, plusBtn, priceDisplay };
+    return { rowEl, countDisplay, minusBtn, plusBtn };
   }
 
   private handleBuy(patternIndex: number): void {

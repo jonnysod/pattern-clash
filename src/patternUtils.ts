@@ -15,20 +15,6 @@ export function mirrorPatternHorizontal(pattern: Pattern): Pattern {
   return { ...pattern, cells: mirroredCells };
 }
 
-// Rotate pattern 90° clockwise
-export function rotatePattern(pattern: Pattern): Pattern {
-  if (pattern.cells.length === 0) return pattern;
-
-  // [row, col] → [col, maxRow - row]
-  const maxRow = Math.max(...pattern.cells.map(([r]) => r));
-  const rotatedCells: [number, number][] = pattern.cells.map(([r, c]) => [
-    c,
-    maxRow - r,
-  ]);
-
-  return { ...pattern, cells: rotatedCells };
-}
-
 // Get pattern transformed for a specific player.
 // Player 1: original (patterns face right by default).
 // Player 2: horizontally mirrored (patterns face left).

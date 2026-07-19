@@ -3,7 +3,6 @@
 import { describe, it, expect } from "vitest";
 import {
   mirrorPatternHorizontal,
-  rotatePattern,
   getPatternForPlayer,
   getPlacementCol,
 } from "../src/patternUtils.js";
@@ -47,23 +46,6 @@ describe("patternUtils — mirrorPatternHorizontal", () => {
     expect(mirrored.name).toBe(p.name);
     expect(mirrored.previewGridSize).toBe(p.previewGridSize);
     expect(mirrored.previewGenerations).toBe(p.previewGenerations);
-  });
-});
-
-describe("patternUtils — rotatePattern", () => {
-  it("rotates a horizontal blinker 90° clockwise into a vertical line", () => {
-    // Horizontal: (0,0), (0,1), (0,2) → maxRow=0
-    // [r,c] → [c, 0 - r] = [c, 0]
-    // → (0,0), (1,0), (2,0)  — vertical line in col 0
-    const p = makePattern([
-      [0, 0],
-      [0, 1],
-      [0, 2],
-    ]);
-    const rotated = rotatePattern(p);
-    expect(new Set(rotated.cells.map((c) => c.join(",")))).toEqual(
-      new Set(["0,0", "1,0", "2,0"]),
-    );
   });
 });
 

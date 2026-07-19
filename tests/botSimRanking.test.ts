@@ -49,7 +49,7 @@ describe("SimRankingBotPolicy — defensive recall", () => {
     const baselineGame = makeGame();
     stampGliderThreat(baselineGame);
     for (let i = 0; i < 200; i++) baselineGame.computeNextGeneration();
-    baselineGame.forceFlushAndApply();
+    baselineGame.skipToGeneration(baselineGame.currentGeneration, 1);
     expect(baselineGame.scorePlayer1).toBeGreaterThan(0);
 
     // The bot is only given a Block card — a purely defensive piece, never
@@ -70,7 +70,7 @@ describe("SimRankingBotPolicy — defensive recall", () => {
     // the opponent's score must come down relative to the unblocked baseline.
     game.placePattern(result!.row, result!.col, pattern, 2);
     for (let i = 0; i < 200; i++) game.computeNextGeneration();
-    game.forceFlushAndApply();
+    game.skipToGeneration(game.currentGeneration, 1);
 
     expect(game.scorePlayer1).toBeLessThan(baselineGame.scorePlayer1);
   });

@@ -42,7 +42,6 @@ export class FirebaseTransport {
   private db: Database;
   private gameCode: string | null = null;
   private localPlayer: Player | null = null;
-  private statusListenerPath: string | null = null;
   private statusUnsubscribe: (() => void) | null = null;
   private actionsUnsubscribe: (() => void) | null = null;
 
@@ -138,7 +137,6 @@ export class FirebaseTransport {
       this.actionsUnsubscribe();
       this.actionsUnsubscribe = null;
     }
-    this.statusListenerPath = null;
     this.gameCode = null;
     this.localPlayer = null;
   }
@@ -206,7 +204,6 @@ export class FirebaseTransport {
   private listenForGameActive(code: string): void {
     const path = `games/${code}/meta/status`;
     const statusRef = ref(this.db, path);
-    this.statusListenerPath = path;
 
     const handler = (snap: DataSnapshot) => {
       const status = snap.val() as GameStatus | null;
@@ -230,7 +227,6 @@ export class FirebaseTransport {
   ): void {
     const path = `games/${code}/players/${opponent}/connected`;
     const connRef = ref(this.db, path);
-    this.statusListenerPath = path;
 
     const handler = (snap: DataSnapshot) => {
       const connected = snap.val();
