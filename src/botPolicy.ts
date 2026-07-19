@@ -141,7 +141,7 @@ export class RuleBasedBotPolicy {
         }
 
         // Path-obstruction score: sum live cells in the full row band the
-        // pattern spans (minDr−1 buffer … maxDr+1 buffer), across all cols.
+        // pattern spans (minDr−2 buffer … maxDr+2 buffer), across all cols.
         // Counts pre-existing cells that could interfere with the pattern's
         // forward trajectory, including cells in adjacent rows.
         let pathScore = 0;
