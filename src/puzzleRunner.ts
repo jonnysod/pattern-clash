@@ -161,6 +161,13 @@ export class PuzzleRunner {
   private simTimerId: number | null = null;
   private simGenTarget: number = 0; // currentGeneration at which this segment ends
 
+  // Hold timers that outlive a single sim tick. Tracked so stop() (Back
+  // button) and start() (Retry, which does not call stop() first) can cancel
+  // them — otherwise a stale hold from an aborted run either ticks the engine
+  // invisibly (Back) or jumps the freshly-started timeline forward (Retry).
+  private segmentHoldTimerId: number | null = null; // flushAndAdvance → next entry
+  private skipHintTimerId: number | null = null; // onStabilitySkip hint hide
+
   // Place phase
   private currentHand: Card[] = [];
   private pendingPlacements: PendingPlacement[] = [];
@@ -192,6 +199,10 @@ export class PuzzleRunner {
   }
 
   start(puzzle: PuzzleDefinition): void {
+    // Retry re-enters start() without a preceding stop() — cancel any timers
+    // (sim tick + holds) left over from the aborted run so they can't fire
+    // into the fresh timeline.
+    this.clearPendingTimers();
     this.puzzle = puzzle;
     this.dom.objective.textContent = puzzle.objective;
     this.dom.hint.textContent = puzzle.hint ?? "";
@@ -205,9 +216,23 @@ export class PuzzleRunner {
   }
 
   stop(): void {
-    this.stopSimulation();
+    this.clearPendingTimers();
     this.unwireCanvasEvents();
     this.state = "idle";
+  }
+
+  // Cancel the sim tick and any pending hold timers. Called by stop() (Back)
+  // and start() (Retry) so no timer from a previous run survives into the next.
+  private clearPendingTimers(): void {
+    this.stopSimulation();
+    if (this.segmentHoldTimerId !== null) {
+      clearTimeout(this.segmentHoldTimerId);
+      this.segmentHoldTimerId = null;
+    }
+    if (this.skipHintTimerId !== null) {
+      clearTimeout(this.skipHintTimerId);
+      this.skipHintTimerId = null;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -369,8 +394,9 @@ export class PuzzleRunner {
     this.dom.simSkipHint.style.display = "inline";
     // flushAndAdvance already holds for SEGMENT_END_HOLD_MS; hide hint when
     // the hold fires by scheduling at the same delay.
-    window.setTimeout(
+    this.skipHintTimerId = window.setTimeout(
       () => {
+        this.skipHintTimerId = null;
         this.dom.simSkipHint.style.display = "none";
       },
       PuzzleRunner.SEGMENT_END_HOLD_MS,
@@ -407,10 +433,14 @@ export class PuzzleRunner {
     }
 
     // Hold so floaters are visible before the next phase / result overlay.
-    window.setTimeout(
-      () => this.runNextTimelineEntry(),
-      PuzzleRunner.SEGMENT_END_HOLD_MS,
-    );
+    // During a normal segment-end hold the state is still "simulating"; a
+    // Back press flips it to "idle" (and cancels this timer). The guard keeps
+    // an orphaned callback from advancing the timeline of an aborted run.
+    this.segmentHoldTimerId = window.setTimeout(() => {
+      this.segmentHoldTimerId = null;
+      if (this.state !== "simulating") return;
+      this.runNextTimelineEntry();
+    }, PuzzleRunner.SEGMENT_END_HOLD_MS);
   }
 
   private stopSimulation(): void {

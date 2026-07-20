@@ -53,6 +53,11 @@ export class UIController {
 
   // Simulation
   private simTimerId: number | null = null;
+  // Hold timer between a stability skip and the sim-end path (see
+  // onStabilitySkip). Tracked so it can be cancelled if the game ends
+  // during the hold — otherwise it fires onSimulationComplete() on an
+  // already-ended game and re-opens the buy overlay (zombie restart).
+  private skipHoldTimerId: number | null = null;
 
   // Post-game freerun sandbox
   private freerunTimerId: number | null = null;
@@ -611,7 +616,14 @@ export class UIController {
     this.dom.simSkipHint.style.display = "inline";
 
     // After the hold, hide the hint and take the normal sim-end path.
-    window.setTimeout(() => {
+    // If the game ended during the hold (surrender / disconnect), bail:
+    // advanceAfterSimulation() out of an ended game would re-open the buy
+    // overlay over the winner overlay. stopSimulation() also clears this
+    // timer, so the guard is belt-and-suspenders for any path that ends
+    // the game without going through stopSimulation().
+    this.skipHoldTimerId = window.setTimeout(() => {
+      this.skipHoldTimerId = null;
+      if (this.game.isEnded) return;
       this.dom.simSkipHint.style.display = "none";
       this.onSimulationComplete();
     }, UIController.STABILITY_SKIP_HOLD_MS);
@@ -621,6 +633,10 @@ export class UIController {
     if (this.simTimerId !== null) {
       clearTimeout(this.simTimerId);
       this.simTimerId = null;
+    }
+    if (this.skipHoldTimerId !== null) {
+      clearTimeout(this.skipHoldTimerId);
+      this.skipHoldTimerId = null;
     }
   }
   //#endregion
