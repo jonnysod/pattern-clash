@@ -83,7 +83,10 @@ describe("SimRankingBotPolicy — defensive recall", () => {
 describe("SimRankingBotPolicy — greedy-with-context", () => {
   it("does not place a second ship directly on top of an already-committed one", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game);
+    // Pin a small horizon: this test checks overlap avoidance (a shortlist
+    // property, horizon-independent), not sim depth. The production default
+    // (game.simGenerations) would make it needlessly slow.
+    const policy = new SimRankingBotPolicy(game, { horizon: 50 });
 
     // First card already placed this phase (committed context).
     const firstPattern = getPatternForPlayer(PATTERNS[LWSS_INDEX]!, 2);
@@ -119,7 +122,7 @@ describe("SimRankingBotPolicy — greedy-with-context", () => {
 describe("SimRankingBotPolicy — net-score ranking", () => {
   it("picks the candidate with the highest own-minus-opponent peek score", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game);
+    const policy = new SimRankingBotPolicy(game, { horizon: 50 });
     const card = { id: "c1", patternIndex: BLOCK_INDEX };
 
     const result = policy.choosePlacement(makeView(game, [card]));
@@ -148,7 +151,7 @@ describe("SimRankingBotPolicy — peek isolation", () => {
     const scoreP1Before = game.scorePlayer1;
     const scoreP2Before = game.scorePlayer2;
 
-    const policy = new SimRankingBotPolicy(game);
+    const policy = new SimRankingBotPolicy(game, { horizon: 50 });
     const hand = [
       { id: "a", patternIndex: LWSS_INDEX },
       { id: "b", patternIndex: BLOCK_INDEX },
@@ -219,13 +222,16 @@ describe("SimRankingBotPolicy — buy bundle", () => {
 // ---------------------------------------------------------------------------
 
 describe("SimRankingBotPolicy — regression full game", () => {
-  // Five phases of sim-ranking placement decisions are slow by design (each
-  // is a real headless Conway simulation) — generous timeout, not a pacing
-  // requirement (that's Checkpoint A, live in the browser).
+  // Six phases of sim-ranking placement decisions are slow by design (each is
+  // a real headless Conway simulation). This test validates game *flow*
+  // (use-it-or-lose-it, beginTurn edge cases, reaching "ended"), not sim
+  // quality, so it pins a tiny horizon — the production default
+  // (game.simGenerations = 150) would run for minutes synchronously and blow
+  // the timeout, since Vitest cannot interrupt a synchronous loop.
   it("reaches ended state through BotController without hanging", { timeout: 30000 }, () => {
     const game = makeGame();
     const syncManager = new LocalSyncManager();
-    const policy = new SimRankingBotPolicy(game);
+    const policy = new SimRankingBotPolicy(game, { horizon: 15 });
     const controller = new BotController(game, syncManager, policy);
 
     for (let phase = 1; phase <= game.totalPhases; phase++) {

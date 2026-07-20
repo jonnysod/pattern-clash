@@ -246,13 +246,23 @@ export class DummyBotPolicy implements BotPolicy {
 // Spaceships — patterns that travel and should use the offensive shortlist.
 const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
 
-// Tuned down from the plan's "start ~100" default after a synchronous-cost
-// dry run (see scratch timing in the Stufe-3 PR): horizon=100/shortlist=10
-// took >1s for a single choosePlacement() call over a 6-card hand on a
-// 100×100 grid — too slow for the 600ms placement pacing window. These
-// values keep a single decision under ~0.5s; revisit after a live
-// Checkpoint A pass (web worker is the next escalation, not lower numbers).
-const SIM_HORIZON_GENERATIONS = 50;
+// Horizon defaults to the game's full simulation length (game.simGenerations,
+// currently 150) — the real sim runs exactly that many generations and then
+// stops, so anything that ever scores does so within this window. A shorter
+// horizon silently mis-ranks travelling spaceships: an orthogonal ship moves
+// at c/2 (1 cell per 2 gens) and needs ~126 gens to cross from the front of
+// P2's zone to the left score column, so a 50-gen peek returns 0 for exactly
+// the placements that are actually good. Looking *past* simGenerations buys
+// nothing: the sim has ended, and the next phase's board is reshaped by fresh
+// placements, so extrapolating the current board would be speculative.
+//
+// Cost is ~linear in the horizon (~13 ms/gen for a 6-card hand on a 100×100
+// grid, worst case = first placement of a phase) and plateaus past ~225 gens
+// as the board stabilises (peek early-terminates via detectStablePeriod).
+// At 150 a single decision blocks ~1.9 s synchronously — the 600 ms pacing
+// window is exceeded, so a web worker is the next escalation if that freeze
+// becomes noticeable (do NOT lower the horizon to compensate: that re-blinds
+// the spaceship ranking this default exists to fix).
 const SHORTLIST_SIZE = 6;
 const DEFENSIVE_SHORTLIST_SIZE = 16;
 
@@ -278,7 +288,7 @@ export class SimRankingBotPolicy implements BotPolicy {
   ) {
     this.game = game;
     this.shortlistGenerator = new RuleBasedBotPolicy(game);
-    this.horizon = options?.horizon ?? SIM_HORIZON_GENERATIONS;
+    this.horizon = options?.horizon ?? game.simGenerations;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
   }
 
