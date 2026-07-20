@@ -11,7 +11,7 @@ export const CONFIG = {
   SIM_GENERATIONS: 150, // Generations per simulation phase
   ADDITIONAL_INITIAL_BUDGET: 40, // Budget for phase 1
   BUDGET_PER_PHASE: 25, // Points added to each player's budget at the start of each tactical phase
-  SCORE_POINTS: 1, // Points per cell reaching the opponent's endzone
+  SCORE_POINTS: 1, // Points per cell reaching the opponent's goal zone
   MAX_SLOTS: 10, // Max total pattern slots per buy phase
   MAX_COPIES_PER_TYPE: 3, // Max copies of any single pattern type per buy phase
 
@@ -25,7 +25,7 @@ export const CONFIG = {
   COLOR_ZONE_PLAYER1: "#003333",
   COLOR_ZONE_PLAYER2: "#330033",
   COLOR_ZONE_NEUTRAL: "#000000",
-  COLOR_ZONE_ENDZONE: "#1a1a1a",
+  COLOR_ZONE_GOALZONE: "#1a1a1a",
   COLOR_ZONE_SCORE: "#443300",
   COLOR_GRID_LINE: "#222",
   COLOR_ZONE_BORDER: "#666",

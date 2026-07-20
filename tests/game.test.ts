@@ -161,8 +161,8 @@ describe("Game — Place Logic", () => {
 
   it("placePattern succeeds in the player's own zone", () => {
     const block = PATTERNS[BLOCK_INDEX]!;
-    // P1 zone: cols [endzoneLeftEnd, leftEnd) — well inside that range.
-    const startCol = game.zones.endzoneLeftEnd + 5;
+    // P1 zone: cols [goalZoneLeftEnd, leftEnd) — well inside that range.
+    const startCol = game.zones.goalZoneLeftEnd + 5;
     const ok = game.placePattern(20, startCol, block, 1);
     expect(ok).toBe(true);
     expect(game.grid[20]![startCol]).toBe(true);

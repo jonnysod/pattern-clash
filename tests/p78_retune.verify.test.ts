@@ -5,8 +5,8 @@ import { Zones } from "../src/zones.js";
 import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
-const zonesL  = new Zones(50, 30, { endzoneWidth: 3, lShapes: "both" });
-const zonesP8 = new Zones(60, 36, { endzoneWidth: 3, lShapes: "none" });
+const zonesL  = new Zones(50, 30, { goalZoneWidth: 3, lShapes: "both" });
+const zonesP8 = new Zones(60, 36, { goalZoneWidth: 3, lShapes: "none" });
 
 function score(
   zones: Zones, rows: number, cols: number,
@@ -59,7 +59,7 @@ describe("P8 – Hindernisse in P2-Zone", () => {
   // P2-Zone: cols 39–56, scoreColumn = 57
   it("P8 Zone-Layout zur Referenz", () => {
     const z = zonesP8;
-    console.log(`\nP8 Zonen: P1=${z.endzoneLeftEnd}–${z.leftEnd-1}, neutral=${z.leftEnd}–${z.rightStart-1}, P2=${z.rightStart}–${z.endzoneRightStart-1}, score=${z.scoreColumnRight}`);
+    console.log(`\nP8 Zonen: P1=${z.goalZoneLeftEnd}–${z.leftEnd-1}, neutral=${z.leftEnd}–${z.rightStart-1}, P2=${z.rightStart}–${z.goalZoneRightStart-1}, score=${z.scoreColumnRight}`);
     expect(true).toBe(true);
   });
 

@@ -7,10 +7,10 @@ import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
 // ── P7 grid: 50×30, L-zones ──────────────────────────────────────────────────
-const p7Zones = new Zones(50, 30, { endzoneWidth: 3, lShapes: "both" });
+const p7Zones = new Zones(50, 30, { goalZoneWidth: 3, lShapes: "both" });
 
 // ── P8 grid: 60×36, no-L ─────────────────────────────────────────────────────
-const p8Zones = new Zones(60, 36, { endzoneWidth: 3, lShapes: "none" });
+const p8Zones = new Zones(60, 36, { goalZoneWidth: 3, lShapes: "none" });
 
 function score(
   zones: Zones, rows: number, cols: number,
@@ -45,7 +45,7 @@ describe("P7 verification — scoring with MWSS/LWSS through L-zones (100 gens)"
   it("P7 zone layout", () => {
     const z = p7Zones;
     console.log(`\nP7 zones (50×30, L):`);
-    console.log(`  P1 zone: cols ${z.endzoneLeftEnd}–${z.leftEnd-1}`);
+    console.log(`  P1 zone: cols ${z.goalZoneLeftEnd}–${z.leftEnd-1}`);
     console.log(`  scoreRight=${z.scoreColumnRight}, topL arm: row ${z.scoreRowTop} cols ${z.scoreColumnTopRight}–${z.scoreColumnRight}`);
     console.log(`  bottomL arm: row ${z.scoreRowBottom} cols ${z.scoreColumnBottomRight}–${z.scoreColumnRight}`);
     expect(true).toBe(true);
@@ -93,9 +93,9 @@ describe("P8 verification — 60×36 grid layout + barrier placement", () => {
   it("P8 zone layout", () => {
     const z = p8Zones;
     console.log(`\nP8 zones (60×36, no-L):`);
-    console.log(`  P1 zone: cols ${z.endzoneLeftEnd}–${z.leftEnd-1}`);
+    console.log(`  P1 zone: cols ${z.goalZoneLeftEnd}–${z.leftEnd-1}`);
     console.log(`  neutral: cols ${z.leftEnd}–${z.rightStart-1}`);
-    console.log(`  P2 zone: cols ${z.rightStart}–${z.endzoneRightStart-1}`);
+    console.log(`  P2 zone: cols ${z.rightStart}–${z.goalZoneRightStart-1}`);
     console.log(`  scoreRight=${z.scoreColumnRight}`);
     expect(true).toBe(true);
   });

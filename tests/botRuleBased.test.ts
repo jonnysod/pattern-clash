@@ -164,7 +164,7 @@ describe("RuleBasedBotPolicy — regression full game", () => {
         const card = hand[0]!;
 
         if (active === 1) {
-          const col = game.zones.endzoneLeftEnd + 1;
+          const col = game.zones.goalZoneLeftEnd + 1;
           game.applyPlacement(1, card.id, card.patternIndex, 0, col);
         } else {
           const { row, col } = policy.choosePlacement(makeView(game), card);

@@ -7,7 +7,7 @@ import { Zones } from "./zones.js";
 import { CONFIG } from "./config.js";
 
 // A pending score bucket. Score isn't credited the moment a cell
-// reaches the endzone — it accumulates here. The bucket flushes when
+// reaches the goal zone — it accumulates here. The bucket flushes when
 // the stream goes quiet (silenceCounter >= SCORE_BUCKET_SILENCE_LIMIT)
 // or has grown for too long (ageCounter >= SCORE_BUCKET_AGE_LIMIT),
 // at which point its points are credited and a single ScoreEvent is

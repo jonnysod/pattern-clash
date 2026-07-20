@@ -268,7 +268,7 @@ describe("Bot — headless full game", () => {
           // P1 places at a fixed legal position
           const pattern = PATTERNS[card.patternIndex];
           if (pattern) {
-            const col = game.zones.endzoneLeftEnd + 1;
+            const col = game.zones.goalZoneLeftEnd + 1;
             game.applyPlacement(1, card.id, card.patternIndex, 0, col);
           }
         } else {

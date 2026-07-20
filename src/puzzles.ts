@@ -14,20 +14,20 @@ const GLIDER_DOWN_INDEX = 8;
 const GLIDER_UP_INDEX = 9;
 
 // P8 grid: 60 cols × 36 rows (first puzzle with a non-standard grid size).
-// Zone layout (endzoneWidth=3, no-L): P1 zone cols 3–20, neutral 21–38,
+// Zone layout (goalZoneWidth=3, no-L): P1 zone cols 3–20, neutral 21–38,
 // P2 zone 39–56, scoreColumnRight=57.
 const P8_ROWS = 36;
 const P8_COLS = 60;
 
 // Puzzle grid: 50 cols × 30 rows
-// Zone layout (endzoneWidth=3, no-L): P1 zone cols 3–16, neutral 17–32,
+// Zone layout (goalZoneWidth=3, no-L): P1 zone cols 3–16, neutral 17–32,
 // P2 zone 33–46, scoreColumnRight=47 (P1 scores), scoreColumnLeft=2 (P2 scores).
 const PUZZLE_ROWS = 30;
 const PUZZLE_COLS = 50;
 
 // Shared zone configs used by puzzles.
 export const PUZZLE_ZONE_CONFIG = {
-  endzoneWidth: 3,
+  goalZoneWidth: 3,
   lShapes: "none" as const,
 };
 
@@ -35,7 +35,7 @@ export const PUZZLE_ZONE_CONFIG = {
 // scoreColumnRight=47, top L arm: row 2, cols 36–47; bottom L arm: row 27, cols 36–47.
 // scoreColumnLeft=2, top L arm: row 2, cols 2–14;  bottom L arm: row 27, cols 2–14.
 export const PUZZLE_ZONE_CONFIG_L = {
-  endzoneWidth: 3,
+  goalZoneWidth: 3,
   lShapes: "both" as const,
 };
 
@@ -47,13 +47,13 @@ export const PUZZLE_ZONE_CONFIG_L = {
 const P1: PuzzleDefinition = {
   id: "stop-the-mwss",
   title: "Stop the Spaceship",
-  objective: "Stop the spaceship before it reaches your endzone.",
+  objective: "Stop the spaceship before it reaches your goal zone.",
   hint: "A stable pattern in its path stops it.",
   gridRows: PUZZLE_ROWS,
   gridCols: PUZZLE_COLS,
   playerSide: 1,
 
-  // Mirrored MWSS in the opponent's zone, flying left toward P1's endzone.
+  // Mirrored MWSS in the opponent's zone, flying left toward P1's goal zone.
   initialPlacements: [
     { patternIndex: MWSS_INDEX, row: 12, col: 38, mirror: true },
   ],
@@ -133,9 +133,9 @@ const P2: PuzzleDefinition = {
 //   GliderUp from P1 zone:     P1 = 0  (diagonal, falls off grid before col 47).
 //
 // Note: in a 50×30 grid a diagonal glider needs 31+ grid-diagonal steps to reach
-// the right endzone, which exceeds the grid height before reaching col 47.
+// the right goal zone, which exceeds the grid height before reaching col 47.
 // The lesson — "direction counts" — still holds: only the straight-right LWSS
-// actually reaches the endzone.
+// actually reaches the goal zone.
 // ---------------------------------------------------------------------------
 const P3: PuzzleDefinition = {
   id: "send-a-spaceship",
@@ -219,7 +219,7 @@ const P5: PuzzleDefinition = {
   id: "stop-the-glider",
   title: "Stop the Glider",
   zoneConfig: "l-shapes" as const,
-  objective: "A diagonal glider is approaching your endzone. Stop it before it scores.",
+  objective: "A diagonal glider is approaching your goal zone. Stop it before it scores.",
   hint: "A glider is fragile. A well-placed obstacle ends its trip.",
   gridRows: PUZZLE_ROWS,
   gridCols: PUZZLE_COLS,

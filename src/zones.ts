@@ -4,23 +4,23 @@ import type { Pattern, Player, ZoneRect } from "./types.js";
 import { CONFIG } from "./config.js";
 
 // Optional configuration for zone layout.
-// Defaults reproduce the main-game layout (endzoneWidth=4, lShapes="both").
-// Puzzles can use smaller endzones and simpler score zones.
+// Defaults reproduce the main-game layout (goalZoneWidth=4, lShapes="both").
+// Puzzles can use smaller goal zones and simpler score zones.
 //
 // lShapes: "both"  – L-shaped score zones at top and bottom (default)
 //          "none"  – straight full-height score columns only
 //          "top" | "bottom" – single L-shape on one side (reserved, not yet used)
 export interface ZonesConfig {
-  endzoneWidth?: number;
+  goalZoneWidth?: number;
   lShapes?: "both" | "none";
 }
 
 export class Zones {
   // Main zone boundaries (column indices)
-  readonly endzoneLeftEnd: number; // First col AFTER left endzone
+  readonly goalZoneLeftEnd: number; // First col AFTER left goal zone
   readonly leftEnd: number; // First col of neutral zone
   readonly rightStart: number; // First col of player 2 zone
-  readonly endzoneRightStart: number; // First col of right endzone
+  readonly goalZoneRightStart: number; // First col of right goal zone
 
   // Score columns (main vertical score lines)
   readonly scoreColumnLeft: number;
@@ -35,8 +35,8 @@ export class Zones {
   // L-shape row boundaries
   readonly scoreRowTop: number;
   readonly scoreRowBottom: number;
-  readonly endzoneTopRows: number;
-  readonly endzoneBottomStartRow: number;
+  readonly goalZoneTopRows: number;
+  readonly goalZoneBottomStartRow: number;
 
   readonly rows: number;
   readonly cols: number;
@@ -47,32 +47,32 @@ export class Zones {
     this.cols = cols;
     this.lShapes = config?.lShapes ?? "both";
 
-    const endzoneWidth = config?.endzoneWidth ?? 4;
+    const goalZoneWidth = config?.goalZoneWidth ?? 4;
 
     // Compute symmetric zone layout
-    const playableWidth = cols - endzoneWidth * 2;
+    const playableWidth = cols - goalZoneWidth * 2;
     const zoneWidth = Math.floor(playableWidth / 3);
 
-    this.endzoneLeftEnd = endzoneWidth;
-    this.leftEnd = endzoneWidth + zoneWidth;
-    this.rightStart = cols - endzoneWidth - zoneWidth;
-    this.endzoneRightStart = cols - endzoneWidth;
+    this.goalZoneLeftEnd = goalZoneWidth;
+    this.leftEnd = goalZoneWidth + zoneWidth;
+    this.rightStart = cols - goalZoneWidth - zoneWidth;
+    this.goalZoneRightStart = cols - goalZoneWidth;
 
-    // Score columns: last col of left endzone, first col of right endzone
-    this.scoreColumnLeft = endzoneWidth - 1;
-    this.scoreColumnRight = cols - endzoneWidth;
+    // Score columns: last col of left goal zone, first col of right goal zone
+    this.scoreColumnLeft = goalZoneWidth - 1;
+    this.scoreColumnRight = cols - goalZoneWidth;
 
-    // L-shape dimensions: height = endzoneWidth, horizontal arm ends endzoneWidth before neutral zone
-    this.endzoneTopRows = endzoneWidth;
-    this.endzoneBottomStartRow = rows - endzoneWidth;
-    this.scoreRowTop = endzoneWidth - 1;
-    this.scoreRowBottom = rows - endzoneWidth;
+    // L-shape dimensions: height = goalZoneWidth, horizontal arm ends goalZoneWidth before neutral zone
+    this.goalZoneTopRows = goalZoneWidth;
+    this.goalZoneBottomStartRow = rows - goalZoneWidth;
+    this.scoreRowTop = goalZoneWidth - 1;
+    this.scoreRowBottom = rows - goalZoneWidth;
 
-    // Horizontal L-arms extend to endzoneWidth columns before neutral zone
-    this.scoreColumnTopLeft = this.leftEnd - endzoneWidth;
-    this.scoreColumnBottomLeft = this.leftEnd - endzoneWidth;
-    this.scoreColumnTopRight = this.rightStart + endzoneWidth;
-    this.scoreColumnBottomRight = this.rightStart + endzoneWidth;
+    // Horizontal L-arms extend to goalZoneWidth columns before neutral zone
+    this.scoreColumnTopLeft = this.leftEnd - goalZoneWidth;
+    this.scoreColumnBottomLeft = this.leftEnd - goalZoneWidth;
+    this.scoreColumnTopRight = this.rightStart + goalZoneWidth;
+    this.scoreColumnBottomRight = this.rightStart + goalZoneWidth;
   }
 
   // Check if the entire pattern fits within the player's zone.
@@ -87,9 +87,9 @@ export class Zones {
     const leftCol = startCol + minOffset;
     const rightCol = startCol + maxOffset;
     if (player === 1) {
-      return leftCol >= this.endzoneLeftEnd && rightCol < this.leftEnd;
+      return leftCol >= this.goalZoneLeftEnd && rightCol < this.leftEnd;
     } else {
-      return leftCol >= this.rightStart && rightCol < this.endzoneRightStart;
+      return leftCol >= this.rightStart && rightCol < this.goalZoneRightStart;
     }
   }
 
@@ -118,8 +118,8 @@ export class Zones {
     // Main side column (between L-shapes)
     if (
       col === this.scoreColumnLeft &&
-      row >= this.endzoneTopRows &&
-      row < this.endzoneBottomStartRow
+      row >= this.goalZoneTopRows &&
+      row < this.goalZoneBottomStartRow
     ) {
       return true;
     }
@@ -159,8 +159,8 @@ export class Zones {
     // Main side column
     if (
       col === this.scoreColumnRight &&
-      row >= this.endzoneTopRows &&
-      row < this.endzoneBottomStartRow
+      row >= this.goalZoneTopRows &&
+      row < this.goalZoneBottomStartRow
     ) {
       return true;
     }
@@ -201,14 +201,14 @@ export class Zones {
       y: 0,
       w: this.cols,
       h: this.rows,
-      color: CONFIG.COLOR_ZONE_ENDZONE,
+      color: CONFIG.COLOR_ZONE_GOALZONE,
     });
 
     // 2. Player zones
     rects.push({
-      x: this.endzoneLeftEnd,
+      x: this.goalZoneLeftEnd,
       y: 0,
-      w: this.leftEnd - this.endzoneLeftEnd,
+      w: this.leftEnd - this.goalZoneLeftEnd,
       h: this.rows,
       color: CONFIG.COLOR_ZONE_PLAYER1,
     });
@@ -222,7 +222,7 @@ export class Zones {
     rects.push({
       x: this.rightStart,
       y: 0,
-      w: this.endzoneRightStart - this.rightStart,
+      w: this.goalZoneRightStart - this.rightStart,
       h: this.rows,
       color: CONFIG.COLOR_ZONE_PLAYER2,
     });
@@ -246,54 +246,54 @@ export class Zones {
       return rects;
     }
 
-    // lShapes === "both": L-shaped endzone overlays and score zones
-    // 3. L-shaped endzone overlays (gray, mask corners of player zones)
+    // lShapes === "both": L-shaped goal zone overlays and score zones
+    // 3. L-shaped goal zone overlays (gray, mask corners of player zones)
     // Left top L
     rects.push({
-      x: this.endzoneLeftEnd,
+      x: this.goalZoneLeftEnd,
       y: 0,
-      w: this.scoreColumnTopLeft - this.endzoneLeftEnd,
-      h: this.endzoneTopRows,
-      color: CONFIG.COLOR_ZONE_ENDZONE,
+      w: this.scoreColumnTopLeft - this.goalZoneLeftEnd,
+      h: this.goalZoneTopRows,
+      color: CONFIG.COLOR_ZONE_GOALZONE,
     });
     // Left bottom L
     rects.push({
-      x: this.endzoneLeftEnd,
-      y: this.endzoneBottomStartRow,
-      w: this.scoreColumnBottomLeft - this.endzoneLeftEnd,
-      h: this.rows - this.endzoneBottomStartRow,
-      color: CONFIG.COLOR_ZONE_ENDZONE,
+      x: this.goalZoneLeftEnd,
+      y: this.goalZoneBottomStartRow,
+      w: this.scoreColumnBottomLeft - this.goalZoneLeftEnd,
+      h: this.rows - this.goalZoneBottomStartRow,
+      color: CONFIG.COLOR_ZONE_GOALZONE,
     });
     // Right top L
     rects.push({
       x: this.scoreColumnTopRight + 1,
       y: 0,
-      w: this.endzoneRightStart - this.scoreColumnTopRight - 1,
-      h: this.endzoneTopRows,
-      color: CONFIG.COLOR_ZONE_ENDZONE,
+      w: this.goalZoneRightStart - this.scoreColumnTopRight - 1,
+      h: this.goalZoneTopRows,
+      color: CONFIG.COLOR_ZONE_GOALZONE,
     });
     // Right bottom L
     rects.push({
       x: this.scoreColumnBottomRight + 1,
-      y: this.endzoneBottomStartRow,
-      w: this.endzoneRightStart - this.scoreColumnBottomRight - 1,
-      h: this.rows - this.endzoneBottomStartRow,
-      color: CONFIG.COLOR_ZONE_ENDZONE,
+      y: this.goalZoneBottomStartRow,
+      w: this.goalZoneRightStart - this.scoreColumnBottomRight - 1,
+      h: this.rows - this.goalZoneBottomStartRow,
+      color: CONFIG.COLOR_ZONE_GOALZONE,
     });
 
     // 4. Score zones (yellow)
     // Side columns (between top and bottom L-shapes)
-    const midHeight = this.endzoneBottomStartRow - this.endzoneTopRows;
+    const midHeight = this.goalZoneBottomStartRow - this.goalZoneTopRows;
     rects.push({
       x: this.scoreColumnLeft,
-      y: this.endzoneTopRows,
+      y: this.goalZoneTopRows,
       w: 1,
       h: midHeight,
       color: CONFIG.COLOR_ZONE_SCORE,
     });
     rects.push({
       x: this.scoreColumnRight,
-      y: this.endzoneTopRows,
+      y: this.goalZoneTopRows,
       w: 1,
       h: midHeight,
       color: CONFIG.COLOR_ZONE_SCORE,

@@ -6,7 +6,7 @@ import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
 const ROWS = 36, COLS = 60;
-const zones = new Zones(COLS, ROWS, { endzoneWidth: 3, lShapes: "none" });
+const zones = new Zones(COLS, ROWS, { goalZoneWidth: 3, lShapes: "none" });
 
 function run(stamps: { r: number; c: number; cells: [number,number][] }[], gens: number): number {
   const eng = new Engine(ROWS, COLS, zones, 9999);
@@ -37,7 +37,7 @@ describe("P8 final design", () => {
   it("zone layout (60×36 no-L)", () => {
     const z = zones;
     console.log(`\nP8 zones (60×36, no-L):`);
-    console.log(`  P1 zone: cols ${z.endzoneLeftEnd}–${z.leftEnd-1}`);
+    console.log(`  P1 zone: cols ${z.goalZoneLeftEnd}–${z.leftEnd-1}`);
     console.log(`  scoreRight=${z.scoreColumnRight}`);
     expect(true).toBe(true);
   });

@@ -12,10 +12,10 @@ import { describe, it, expect } from "vitest";
 
 const ROWS = 30;
 const COLS = 50;
-const EZ = 3; // endzone width
+const EZ = 3; // goal zone width
 
-const zonesNoL = new Zones(COLS, ROWS, { endzoneWidth: EZ, lShapes: "none" });
-const zonesL = new Zones(COLS, ROWS, { endzoneWidth: EZ, lShapes: "both" });
+const zonesNoL = new Zones(COLS, ROWS, { goalZoneWidth: EZ, lShapes: "none" });
+const zonesL = new Zones(COLS, ROWS, { goalZoneWidth: EZ, lShapes: "both" });
 
 function freshEngine(rows = ROWS, cols = COLS, zones = zonesNoL): Engine {
   return new Engine(rows, cols, zones, 9999);
@@ -37,9 +37,9 @@ describe("Zone layout", () => {
   it("no-L zones (P3/P4/P5 placement info)", () => {
     const z = zonesNoL;
     console.log(`\nNo-L zones (50×30, ez=3):`);
-    console.log(`  P1 zone: cols ${z.endzoneLeftEnd}–${z.leftEnd - 1}`);
+    console.log(`  P1 zone: cols ${z.goalZoneLeftEnd}–${z.leftEnd - 1}`);
     console.log(`  neutral: cols ${z.leftEnd}–${z.rightStart - 1}`);
-    console.log(`  P2 zone: cols ${z.rightStart}–${z.endzoneRightStart - 1}`);
+    console.log(`  P2 zone: cols ${z.rightStart}–${z.goalZoneRightStart - 1}`);
     console.log(`  scoreColumnRight=${z.scoreColumnRight} (P1 scores)`);
     console.log(`  scoreColumnLeft=${z.scoreColumnLeft} (P2 scores)`);
     expect(true).toBe(true);
@@ -48,13 +48,13 @@ describe("Zone layout", () => {
   it("L zones (P5/P6)", () => {
     const z = zonesL;
     console.log(`\nL zones (50×30, ez=3):`);
-    console.log(`  P1 zone: cols ${z.endzoneLeftEnd}–${z.leftEnd - 1}`);
+    console.log(`  P1 zone: cols ${z.goalZoneLeftEnd}–${z.leftEnd - 1}`);
     console.log(`  scoreColumnRight=${z.scoreColumnRight}`);
     console.log(`  scoreColumnTopRight=${z.scoreColumnTopRight} (top L vertical)`);
     console.log(`  scoreColumnBottomRight=${z.scoreColumnBottomRight} (bottom L vertical)`);
     console.log(`  scoreRowTop=${z.scoreRowTop} (top L horizontal row)`);
     console.log(`  scoreRowBottom=${z.scoreRowBottom} (bottom L horizontal row)`);
-    console.log(`  endzoneTopRows=${z.endzoneTopRows}, endzoneBottomStartRow=${z.endzoneBottomStartRow}`);
+    console.log(`  goalZoneTopRows=${z.goalZoneTopRows}, goalZoneBottomStartRow=${z.goalZoneBottomStartRow}`);
     console.log(`  P2 scoring: scoreColumnLeft=${z.scoreColumnLeft}`);
     console.log(`  scoreColumnTopLeft=${z.scoreColumnTopLeft} (P2 top L vertical)`);
     console.log(`  scoreColumnBottomLeft=${z.scoreColumnBottomLeft} (P2 bottom L vertical)`);

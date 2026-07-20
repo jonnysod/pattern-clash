@@ -139,7 +139,7 @@ describe("engine.forceFlushBuckets() — regression for late-hit score loss", ()
   // Craft a situation where exactly one score birth happens on tick 1 and
   // the bucket does NOT reach SILENCE_LIMIT (3) or AGE_LIMIT (15).
   //
-  // Layout (50×30, lShapes=none, endzoneWidth=3):
+  // Layout (50×30, lShapes=none, goalZoneWidth=3):
   //   scoreColumnLeft = 2 — P2 scores when a cell is born at col 2.
   //
   // Cells placed so (15, 2) is dead but has exactly 3 live neighbours →

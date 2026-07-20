@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 const ROWS = 30;
 const COLS = 50;
 const EZ = 3;
-const zonesL = new Zones(COLS, ROWS, { endzoneWidth: EZ, lShapes: "both" });
+const zonesL = new Zones(COLS, ROWS, { goalZoneWidth: EZ, lShapes: "both" });
 
 function runScore(eng: Engine, gens: number): { p1: number; p2: number } {
   let p1 = 0, p2 = 0;

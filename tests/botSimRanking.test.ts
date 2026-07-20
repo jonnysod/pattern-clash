@@ -281,7 +281,7 @@ describe("SimRankingBotPolicy — regression full game", () => {
           const hand = game.getHand(1);
           const card = hand[0];
           if (!card) break;
-          const col = game.zones.endzoneLeftEnd + 1;
+          const col = game.zones.goalZoneLeftEnd + 1;
           game.applyPlacement(1, card.id, card.patternIndex, 0, col);
         } else {
           // Direct synchronous placement (bypassing the pacing timer) — same

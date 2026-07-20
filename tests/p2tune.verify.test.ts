@@ -8,7 +8,7 @@ import { mirrorPatternHorizontal } from "../src/patternUtils.js";
 import { describe, it, expect } from "vitest";
 
 const ROWS = 30, COLS = 50, EZ = 3;
-const zones = new Zones(COLS, ROWS, { endzoneWidth: EZ, lShapes: "none" });
+const zones = new Zones(COLS, ROWS, { goalZoneWidth: EZ, lShapes: "none" });
 const mwssMirrored = mirrorPatternHorizontal(PATTERNS[1]!);
 const block = PATTERNS[2]!;
 

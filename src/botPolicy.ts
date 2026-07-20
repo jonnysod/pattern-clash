@@ -377,9 +377,9 @@ export class SimRankingBotPolicy implements BotPolicy {
     const candidateCols: number[] = [];
     for (
       let col = zones.rightStart;
-      col < zones.endzoneRightStart;
+      col < zones.goalZoneRightStart;
       col +=
-        Math.max(1, Math.floor((zones.endzoneRightStart - zones.rightStart) / 4))
+        Math.max(1, Math.floor((zones.goalZoneRightStart - zones.rightStart) / 4))
     ) {
       candidateCols.push(col);
     }

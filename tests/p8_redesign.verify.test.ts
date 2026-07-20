@@ -6,7 +6,7 @@ import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
 const ROWS = 36, COLS = 60;
-const zones = new Zones(COLS, ROWS, { endzoneWidth: 3, lShapes: "none" });
+const zones = new Zones(COLS, ROWS, { goalZoneWidth: 3, lShapes: "none" });
 
 function run(stamps: { r: number; c: number; cells: [number,number][] }[], gens: number): number {
   const eng = new Engine(ROWS, COLS, zones, 9999);

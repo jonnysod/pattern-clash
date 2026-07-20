@@ -216,7 +216,7 @@ describe("detectStablePeriod — scoring oscillator (no early termination)", () 
   it("does not detect stability while a Blinker overlapping a score zone produces hits", () => {
     // Left score column is col 3 (scorer=2). A Blinker centred there oscillates
     // and its cells are born in the score zone every other tick.
-    // Score column for P2 is col 3 (1 before endzoneLeftEnd=4).
+    // Score column for P2 is col 3 (1 before goalZoneLeftEnd=4).
     const engine = makeEngine(150);
     // Stamp blinker so the centre cell is exactly on the score column.
     // Horizontal blinker: cells at (row, col), (row, col+1), (row, col+2).
@@ -403,7 +403,7 @@ describe("detectStablePeriod — puzzle segment equivalence", () => {
     const SEG_GENS = 80;
 
     function buildSeg(): Engine {
-      const zones = new Zones(ROWS, COLS, { endzoneWidth: 3, lShapes: "none" });
+      const zones = new Zones(ROWS, COLS, { goalZoneWidth: 3, lShapes: "none" });
       const e = new Engine(ROWS, COLS, zones, SEG_GENS);
       stampBlock(e, 25, 20);
       return e;

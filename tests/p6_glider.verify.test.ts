@@ -4,7 +4,7 @@ import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
 const ROWS = 30, COLS = 50, EZ = 3;
-const zonesL = new Zones(COLS, ROWS, { endzoneWidth: EZ, lShapes: "both" });
+const zonesL = new Zones(COLS, ROWS, { goalZoneWidth: EZ, lShapes: "both" });
 
 function score(cells: [number,number][], sr: number, sc: number, gens: number): number {
   const eng = new Engine(ROWS, COLS, zonesL, 9999);

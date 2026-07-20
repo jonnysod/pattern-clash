@@ -15,12 +15,12 @@ import { describe, it, expect } from "vitest";
 // Puzzle grid dimensions
 const ROWS = 30;
 const COLS = 50;
-const ENDZONE_WIDTH = 3;
+const GOALZONE_WIDTH = 3;
 
 // Zone with no L-shapes (clean straight score columns)
-const zones = new Zones(COLS, ROWS, { endzoneWidth: ENDZONE_WIDTH, lShapes: "none" });
+const zones = new Zones(COLS, ROWS, { goalZoneWidth: GOALZONE_WIDTH, lShapes: "none" });
 
-// MWSS (index 1) mirrored — flies left toward P1's endzone
+// MWSS (index 1) mirrored — flies left toward P1's goal zone
 const mwss = PATTERNS[1]!;
 const mwssMirrored = mirrorPatternHorizontal(mwss);
 
@@ -45,12 +45,12 @@ function runAndScore(eng: Engine, gens: number): number {
 
 describe("Puzzle verification — MWSS setup", () => {
   it("reports zone layout", () => {
-    console.log("Zone layout (50×30, endzoneWidth=3, lShapes=none):");
+    console.log("Zone layout (50×30, goalZoneWidth=3, lShapes=none):");
     console.log(`  scoreColumnLeft  = ${zones.scoreColumnLeft}  (P2 scores here)`);
     console.log(`  scoreColumnRight = ${zones.scoreColumnRight} (P1 scores here)`);
-    console.log(`  P1 zone: cols ${zones.endzoneLeftEnd}–${zones.leftEnd - 1}`);
+    console.log(`  P1 zone: cols ${zones.goalZoneLeftEnd}–${zones.leftEnd - 1}`);
     console.log(`  neutral: cols ${zones.leftEnd}–${zones.rightStart - 1}`);
-    console.log(`  P2 zone: cols ${zones.rightStart}–${zones.endzoneRightStart - 1}`);
+    console.log(`  P2 zone: cols ${zones.rightStart}–${zones.goalZoneRightStart - 1}`);
     expect(true).toBe(true);
   });
 

@@ -6,7 +6,7 @@ import { PATTERNS } from "../src/patterns.js";
 import { describe, it, expect } from "vitest";
 
 const ROWS = 36, COLS = 60;
-const zones = new Zones(COLS, ROWS, { endzoneWidth: 3, lShapes: "none" });
+const zones = new Zones(COLS, ROWS, { goalZoneWidth: 3, lShapes: "none" });
 // P2-Zone: cols 39–56, scoreColumn = 57
 
 function run(stamps: { r: number; c: number; cells: [number,number][] }[], gens: number): number {
