@@ -63,21 +63,13 @@ export class UIController {
   private freerunTimerId: number | null = null;
   private freerunPlaying: boolean = false;
 
-  // Event handler references (for removeEventListener)
-  private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
-  private mouseLeaveHandler: (() => void) | null = null;
-  private clickHandler: ((e: MouseEvent) => void) | null = null;
-
-  // Persistent-button handler references. These buttons live outside this
-  // controller's own DOM subtree and outlive it across restarts — without
-  // storing and removing these, each new UIController stacks another
-  // listener onto the same buttons (e.g. N surrender confirms after N games).
-  private switchOverlayReadyHandler: (() => void) | null = null;
-  private surrender1Handler: (() => void) | null = null;
-  private surrender2Handler: (() => void) | null = null;
-  private showBoardHandler: (() => void) | null = null;
-  private restartHandler: (() => void) | null = null;
-  private freerunPlayHandler: (() => void) | null = null;
+  // Registry of every addEventListener wired by this controller. Buttons like
+  // surrender/restart/show-board live outside this controller's own DOM subtree
+  // and outlive it across restarts — without removing each listener on cleanup,
+  // every new UIController stacks another one onto the same button (e.g. N
+  // surrender confirms after N games). A single registry makes "wired but never
+  // removed" impossible to reintroduce: listen() records, cleanup() drains.
+  private listeners: Array<[EventTarget, string, EventListener]> = [];
 
   private botController: BotController | null = null;
 
@@ -138,48 +130,53 @@ export class UIController {
   }
 
   //#region Wiring
+  // Register a DOM listener and record it so cleanup() can remove it. The
+  // single source of truth for "what did we wire" — never call
+  // addEventListener directly for a listener that must survive to cleanup.
+  private listen(
+    target: EventTarget,
+    event: string,
+    handler: EventListener,
+  ): void {
+    target.addEventListener(event, handler);
+    this.listeners.push([target, event, handler]);
+  }
+
   private wireEventHandlers(): void {
     this.buyOverlay.onConfirm = (player) => this.onBuyConfirmed(player);
     this.cardHand.onCardSelect = (cardId) => this.onCardSelect(cardId);
 
-    this.switchOverlayReadyHandler = () => this.onSwitchReady();
-    this.dom.switchOverlayReadyBtn.addEventListener(
-      "click",
-      this.switchOverlayReadyHandler,
+    this.listen(this.dom.switchOverlayReadyBtn, "click", () =>
+      this.onSwitchReady(),
     );
 
-    this.surrender1Handler = () => this.handleSurrender(1);
-    this.dom.surrender1Btn.addEventListener("click", this.surrender1Handler);
-    this.surrender2Handler = () => this.handleSurrender(2);
-    this.dom.surrender2Btn.addEventListener("click", this.surrender2Handler);
+    this.listen(this.dom.surrender1Btn, "click", () => this.handleSurrender(1));
+    this.listen(this.dom.surrender2Btn, "click", () => this.handleSurrender(2));
 
     // Winner overlay buttons
-    this.showBoardHandler = () => {
+    this.listen(this.dom.showBoardBtn, "click", () => {
       this.dom.winnerOverlay.style.display = "none";
       this.enterFreerun();
-    };
-    this.dom.showBoardBtn.addEventListener("click", this.showBoardHandler);
-    this.restartHandler = () => {
+    });
+    this.listen(this.dom.restartBtn, "click", () => {
       this.stopFreerun();
       this.dom.freerunBar.style.display = "none";
       this.dom.winnerOverlay.style.display = "none";
       this.cleanup();
       if (this.onRestartRequested) this.onRestartRequested();
-    };
-    this.dom.restartBtn.addEventListener("click", this.restartHandler);
-    this.freerunPlayHandler = () => this.toggleFreerun();
-    this.dom.freerunPlayBtn.addEventListener(
-      "click",
-      this.freerunPlayHandler,
-    );
+    });
+    this.listen(this.dom.freerunPlayBtn, "click", () => this.toggleFreerun());
 
     // Canvas mouse tracking for ghost preview + placement click
-    this.mouseMoveHandler = (e) => this.onCanvasMouseMove(e);
-    this.mouseLeaveHandler = () => this.onCanvasMouseLeave();
-    this.clickHandler = (e) => this.onCanvasClick(e);
-    this.dom.gameCanvas.addEventListener("mousemove", this.mouseMoveHandler);
-    this.dom.gameCanvas.addEventListener("mouseleave", this.mouseLeaveHandler);
-    this.dom.gameCanvas.addEventListener("click", this.clickHandler);
+    this.listen(this.dom.gameCanvas, "mousemove", (e) =>
+      this.onCanvasMouseMove(e as MouseEvent),
+    );
+    this.listen(this.dom.gameCanvas, "mouseleave", () =>
+      this.onCanvasMouseLeave(),
+    );
+    this.listen(this.dom.gameCanvas, "click", (e) =>
+      this.onCanvasClick(e as MouseEvent),
+    );
   }
 
   private cleanup(): void {
@@ -188,54 +185,10 @@ export class UIController {
     this.botController?.stop();
     this.syncManager.stop();
     this.syncManager.onRemoteAction = null;
-    if (this.mouseMoveHandler) {
-      this.dom.gameCanvas.removeEventListener(
-        "mousemove",
-        this.mouseMoveHandler,
-      );
+    for (const [target, event, handler] of this.listeners) {
+      target.removeEventListener(event, handler);
     }
-    if (this.mouseLeaveHandler) {
-      this.dom.gameCanvas.removeEventListener(
-        "mouseleave",
-        this.mouseLeaveHandler,
-      );
-    }
-    if (this.clickHandler) {
-      this.dom.gameCanvas.removeEventListener("click", this.clickHandler);
-    }
-    if (this.switchOverlayReadyHandler) {
-      this.dom.switchOverlayReadyBtn.removeEventListener(
-        "click",
-        this.switchOverlayReadyHandler,
-      );
-    }
-    if (this.surrender1Handler) {
-      this.dom.surrender1Btn.removeEventListener(
-        "click",
-        this.surrender1Handler,
-      );
-    }
-    if (this.surrender2Handler) {
-      this.dom.surrender2Btn.removeEventListener(
-        "click",
-        this.surrender2Handler,
-      );
-    }
-    if (this.showBoardHandler) {
-      this.dom.showBoardBtn.removeEventListener(
-        "click",
-        this.showBoardHandler,
-      );
-    }
-    if (this.restartHandler) {
-      this.dom.restartBtn.removeEventListener("click", this.restartHandler);
-    }
-    if (this.freerunPlayHandler) {
-      this.dom.freerunPlayBtn.removeEventListener(
-        "click",
-        this.freerunPlayHandler,
-      );
-    }
+    this.listeners = [];
     this.buyOverlay.destroy();
     this.cardHand.clear();
     this.scoreEffects.clear();
