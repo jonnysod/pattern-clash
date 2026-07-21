@@ -13,6 +13,7 @@ import type { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { Engine } from "./engine.js";
+import { CONFIG } from "./config.js";
 
 export interface BotView {
   grid: boolean[][];
@@ -266,15 +267,102 @@ const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
 const SHORTLIST_SIZE = 6;
 const DEFENSIVE_SHORTLIST_SIZE = 16;
 
-// Fixed bundle bought every phase — defensively stocked so choosePlacement
-// always has something to block with. Not budget-aware (deferred); just
-// guarantees defensive candidates exist at all.
-const SIM_RANKING_BUNDLE: BuyBundle[] = [
-  { patternIndex: 0, count: 2 }, // LWSS
-  { patternIndex: 1, count: 1 }, // MWSS
-  { patternIndex: 2, count: 2 }, // Block
-  { patternIndex: 5, count: 1 }, // Blinker
-];
+// ---------------------------------------------------------------------------
+// Budget-aware buy planner (Stufe 4)
+// ---------------------------------------------------------------------------
+//
+// Placement is where the intelligence lives (sim-ranking picks *where* each
+// card goes); the buy only needs to (a) spend the budget instead of leaving
+// it on the table and (b) hand the ranker good raw material, tilted by game
+// state. So this stays a cheap rule-based heuristic with no simulation — a
+// sim-based buy would have to evaluate bundle × placement × sim, which is
+// unbounded and pointless given the placement stage already picks "where".
+//
+// Preference lists are role-internal priority: buy the top pattern up to the
+// copy cap, then fall to the next. Orthogonal spaceships lead the offense
+// list because they fly straight at the score column; gliders drift diagonally
+// and miss more often. Block leads the defense list as the cheapest solid
+// absorber.
+const OFFENSE_PREFERENCE = [1, 0, 8]; // MWSS, LWSS, Glider down
+const DEFENSE_PREFERENCE = [2, 5, 4]; // Block, Blinker, Boat
+
+// Of MAX_SLOTS (10): enough board pressure without flooding the own zone with
+// forced use-it-or-lose-it placements (which also raises self-score risk).
+const BUY_SLOT_CAP = 7;
+
+// Offense is the win condition (the horizon fix makes travelling spaceships
+// the strongest moves), so the neutral split leans offensive.
+const BASE_OFFENSE_SHARE = 0.6;
+
+function clampShare(x: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, x));
+}
+
+// Target fraction of bought slots that should be offense, from view state.
+function computeOffenseShare(view: BotView): number {
+  const scoreDiff = view.ownScore - view.opponentScore; // + = ahead
+
+  let share = BASE_OFFENSE_SHARE;
+  // Ahead → tilt defensive (protect the lead); behind → tilt offensive
+  // (catch up). Saturates around a ±4 point gap.
+  share -= clampShare(scoreDiff / 20, -0.2, 0.2);
+  // More opponent cards on the board → more incoming threats → more defense.
+  share -= clampShare((view.opponentCardCount - 4) / 40, 0, 0.1);
+
+  // Final phase, no carryover into a next phase: if not already ahead, there
+  // is nothing left to protect — go all-in on scoring.
+  if (view.phase >= 6 && scoreDiff <= 0) share = 0.85;
+
+  return clampShare(share, 0.3, 0.85);
+}
+
+// Greedily fill up to BUY_SLOT_CAP cards, interleaving offense/defense to keep
+// the running offense fraction near computeOffenseShare(view), always buying
+// the cheapest-affordable preferred pattern in the chosen role (respecting the
+// per-type copy cap and the remaining budget). Leftover budget rolls over —
+// saving across phases is legal and intended.
+export function planBudgetAwareBuy(view: BotView): BuyBundle[] {
+  const priceOf = (idx: number): number =>
+    PATTERNS[idx]?.cells.length ?? Infinity;
+  const offenseShare = computeOffenseShare(view);
+
+  const counts = new Map<number, number>();
+  const copiesOf = (idx: number): number => counts.get(idx) ?? 0;
+  let slots = 0;
+  let budget = view.ownBudget;
+
+  // Buy the first affordable, under-cap pattern from a role's preference list.
+  const tryBuy = (preference: number[]): boolean => {
+    for (const idx of preference) {
+      if (copiesOf(idx) >= CONFIG.MAX_COPIES_PER_TYPE) continue;
+      const price = priceOf(idx);
+      if (price > budget) continue;
+      counts.set(idx, copiesOf(idx) + 1);
+      budget -= price;
+      slots += 1;
+      return true;
+    }
+    return false;
+  };
+
+  while (slots < BUY_SLOT_CAP) {
+    const offenseSlots = OFFENSE_PREFERENCE.reduce(
+      (sum, idx) => sum + copiesOf(idx),
+      0,
+    );
+    const wantOffenseFirst =
+      slots === 0 ? offenseShare >= 0.5 : offenseSlots / slots < offenseShare;
+    const primary = wantOffenseFirst ? OFFENSE_PREFERENCE : DEFENSE_PREFERENCE;
+    const secondary = wantOffenseFirst ? DEFENSE_PREFERENCE : OFFENSE_PREFERENCE;
+    // Fall back to the other role if the preferred one has nothing affordable.
+    if (!tryBuy(primary) && !tryBuy(secondary)) break;
+  }
+
+  return [...counts.entries()].map(([patternIndex, count]) => ({
+    patternIndex,
+    count,
+  }));
+}
 
 export class SimRankingBotPolicy implements BotPolicy {
   private game: Game;
@@ -292,8 +380,8 @@ export class SimRankingBotPolicy implements BotPolicy {
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
   }
 
-  chooseBuy(_view: BotView): BuyBundle[] {
-    return SIM_RANKING_BUNDLE;
+  chooseBuy(view: BotView): BuyBundle[] {
+    return planBudgetAwareBuy(view);
   }
 
   choosePlacement(
