@@ -18,6 +18,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Claude Code — local context, not for the public repo
+.claude/
+CLAUDE.md
+
 # Logs & runtime
 *.log
 npm-debug.log*
