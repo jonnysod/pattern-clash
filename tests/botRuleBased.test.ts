@@ -37,7 +37,7 @@ describe("RuleBasedBotPolicy — self-score avoidance", () => {
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
 
       // Verify the chosen position is legal
-      expect(zones.isValidPatternPlacement(pattern, col, 2)).toBe(true);
+      expect(zones.isValidPatternPlacement(pattern, row, col, 2)).toBe(true);
 
       // Check whether the chosen footprint self-scores
       let selfScores = false;
@@ -53,7 +53,7 @@ describe("RuleBasedBotPolicy — self-score avoidance", () => {
       let nonSelfScoreExists = false;
       outer: for (let r = 0; r < game.rows; r++) {
         for (let c = 0; c < game.cols; c++) {
-          if (!zones.isValidPatternPlacement(pattern, c, 2)) continue;
+          if (!zones.isValidPatternPlacement(pattern, r, c, 2)) continue;
           let bad = false;
           for (const [dr, dc] of pattern.cells) {
             const { scores, scorer } = zones.isScoreCell(r + dr, c + dc);
@@ -90,7 +90,7 @@ describe("RuleBasedBotPolicy — self-score avoidance", () => {
     const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
     expect(row).toBeGreaterThanOrEqual(0);
     expect(row).toBeLessThan(game.rows);
-    expect(game.zones.isValidPatternPlacement(pattern, col, 2)).toBe(true);
+    expect(game.zones.isValidPatternPlacement(pattern, row, col, 2)).toBe(true);
   });
 });
 
@@ -108,7 +108,7 @@ describe("RuleBasedBotPolicy — offensive orientation", () => {
       const { row, col } = policy.choosePlacement(makeView(game), card);
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
       expect(
-        game.zones.isValidPatternPlacement(pattern, col, 2),
+        game.zones.isValidPatternPlacement(pattern, row, col, 2),
         `Pattern ${idx} placement col=${col} should be in P2 zone`,
       ).toBe(true);
       expect(row).toBeGreaterThanOrEqual(0);

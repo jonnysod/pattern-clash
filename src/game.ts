@@ -218,7 +218,7 @@ export class Game {
     pattern: Pattern,
     player: Player,
   ): boolean {
-    if (!this.zones.isValidPatternPlacement(pattern, startCol, player)) {
+    if (!this.zones.isValidPatternPlacement(pattern, startRow, startCol, player)) {
       return false;
     }
     this.engine.stampCells(startRow, startCol, pattern.cells);

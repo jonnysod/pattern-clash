@@ -132,7 +132,7 @@ describe("DummyBotPolicy — choosePlacement", () => {
 
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
       expect(
-        game.zones.isValidPatternPlacement(pattern, col, 2),
+        game.zones.isValidPatternPlacement(pattern, row, col, 2),
         `Pattern ${idx} (${PATTERNS[idx]!.name}) col=${col} should be valid`,
       ).toBe(true);
       expect(row).toBeGreaterThanOrEqual(0);

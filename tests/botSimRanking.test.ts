@@ -63,7 +63,7 @@ describe("SimRankingBotPolicy — defensive recall", () => {
 
     const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
     expect(
-      game.zones.isValidPatternPlacement(pattern, result!.col, 2),
+      game.zones.isValidPatternPlacement(pattern, result!.row, result!.col, 2),
     ).toBe(true);
 
     // Apply the chosen placement for real and re-run the same horizon —
@@ -133,7 +133,7 @@ describe("SimRankingBotPolicy — net-score ranking", () => {
     // every other test in this file — this just locks in the contract.
     const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
     expect(
-      game.zones.isValidPatternPlacement(pattern, result!.col, 2),
+      game.zones.isValidPatternPlacement(pattern, result!.row, result!.col, 2),
     ).toBe(true);
   });
 });

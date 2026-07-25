@@ -120,7 +120,7 @@ export class RuleBasedBotPolicy {
 
     for (let row = 0; row < this.game.rows; row++) {
       for (let col = 0; col < this.game.cols; col++) {
-        if (!zones.isValidPatternPlacement(pattern, col, 2)) continue;
+        if (!zones.isValidPatternPlacement(pattern, row, col, 2)) continue;
 
         // Self-score penalty: footprint cell would give P1 a point.
         let selfScore = false;
@@ -207,7 +207,7 @@ export class DummyBotPolicy implements BotPolicy {
     for (let attempt = 0; attempt < 50; attempt++) {
       const row = Math.floor(Math.random() * this.game.rows);
       const col = Math.floor(Math.random() * this.game.cols);
-      if (zones.isValidPatternPlacement(pattern, col, 2)) {
+      if (zones.isValidPatternPlacement(pattern, row, col, 2)) {
         return { row, col };
       }
     }
@@ -215,7 +215,7 @@ export class DummyBotPolicy implements BotPolicy {
     // Zone-scan fallback — guaranteed to find a legal position.
     for (let row = 0; row < this.game.rows; row++) {
       for (let col = 0; col < this.game.cols; col++) {
-        if (zones.isValidPatternPlacement(pattern, col, 2)) {
+        if (zones.isValidPatternPlacement(pattern, row, col, 2)) {
           return { row, col };
         }
       }
@@ -392,7 +392,17 @@ export class SimRankingBotPolicy implements BotPolicy {
       row: number;
       col: number;
       net: number;
+      centrality: number;
     } | null = null;
+
+    // Tie-break on exact net-score equality: prefer the more central row.
+    // Net is an integer point sum, so ties are exact. Without this, net-0
+    // ties (a placement that neither scores nor blocks) fall to the first
+    // shortlist entry, which the offensive heuristic biases toward the low-
+    // obstruction top/bottom edges — the bot would drift to the score-zone
+    // L-arms even when they do not help. Centrality reserves the edges for
+    // placements that genuinely improve the net score.
+    const midRow = this.game.rows / 2;
 
     for (const card of view.ownHand) {
       const basePattern = PATTERNS[card.patternIndex];
@@ -402,8 +412,13 @@ export class SimRankingBotPolicy implements BotPolicy {
       const candidates = this.generateShortlist(card, pattern, view.grid);
       for (const { row, col } of candidates) {
         const net = this.peekNetScore(view.grid, pattern, row, col);
-        if (best === null || net > best.net) {
-          best = { cardId: card.id, row, col, net };
+        const centrality = -Math.abs(row - midRow); // higher = more central
+        if (
+          best === null ||
+          net > best.net ||
+          (net === best.net && centrality > best.centrality)
+        ) {
+          best = { cardId: card.id, row, col, net, centrality };
         }
       }
     }
@@ -485,7 +500,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       row += rowStep
     ) {
       for (const col of candidateCols) {
-        if (!zones.isValidPatternPlacement(pattern, col, 2)) continue;
+        if (!zones.isValidPatternPlacement(pattern, row, col, 2)) continue;
         candidates.push({ row, col });
       }
     }

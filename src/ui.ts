@@ -433,6 +433,7 @@ export class UIController {
     );
     const valid = this.game.zones.isValidPatternPlacement(
       pattern,
+      this.hoverRow,
       placementCol,
       this.activePlacer,
     );
@@ -474,6 +475,7 @@ export class UIController {
     if (
       !this.game.zones.isValidPatternPlacement(
         pattern,
+        row,
         placementCol,
         this.activePlacer,
       )

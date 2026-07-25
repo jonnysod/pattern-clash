@@ -79,13 +79,25 @@ export class Zones {
   // startCol is the column of the cell with col-offset 0.
   isValidPatternPlacement(
     pattern: Pattern,
+    startRow: number,
     startCol: number,
     player: Player,
   ): boolean {
-    const minOffset = Math.min(...pattern.cells.map(([, c]) => c));
-    const maxOffset = Math.max(...pattern.cells.map(([, c]) => c));
-    const leftCol = startCol + minOffset;
-    const rightCol = startCol + maxOffset;
+    const minColOffset = Math.min(...pattern.cells.map(([, c]) => c));
+    const maxColOffset = Math.max(...pattern.cells.map(([, c]) => c));
+    const leftCol = startCol + minColOffset;
+    const rightCol = startCol + maxColOffset;
+
+    // The whole pattern must fit vertically on the grid — otherwise
+    // stampCells() would silently clip the off-grid cells. Placements in
+    // the top/bottom rows (e.g. the score-zone L-arms) stay valid as long
+    // as no cell falls outside the field.
+    const minRowOffset = Math.min(...pattern.cells.map(([r]) => r));
+    const maxRowOffset = Math.max(...pattern.cells.map(([r]) => r));
+    const topRow = startRow + minRowOffset;
+    const botRow = startRow + maxRowOffset;
+    if (topRow < 0 || botRow >= this.rows) return false;
+
     if (player === 1) {
       return leftCol >= this.goalZoneLeftEnd && rightCol < this.leftEnd;
     } else {
