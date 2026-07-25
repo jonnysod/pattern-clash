@@ -310,3 +310,44 @@ describe("SimRankingBotPolicy — regression full game", () => {
     expect(game.isEnded).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// On-grid placement + centrality tie-break (edge-drift regression)
+// ---------------------------------------------------------------------------
+
+describe("SimRankingBotPolicy — on-grid placement", () => {
+  it("never returns a placement that clips off the grid", () => {
+    const game = makeGame();
+    // Flood the central rows so the offensive heuristic favours the low-
+    // obstruction top/bottom edges — the exact condition that used to yield
+    // bottom-edge placements clipped off the field.
+    for (let r = 40; r < 60; r++) {
+      for (let c = 0; c < game.cols; c++) game.grid[r]![c] = true;
+    }
+    const hand = [{ id: "a", patternIndex: 1 }]; // MWSS (5 rows tall)
+    const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+    const res = policy.choosePlacement(makeView(game, hand))!;
+    expect(res).not.toBeNull();
+
+    const pattern = getPatternForPlayer(PATTERNS[1]!, 2);
+    for (const [dr, dc] of pattern.cells) {
+      expect(res.row + dr).toBeGreaterThanOrEqual(0);
+      expect(res.row + dr).toBeLessThan(game.rows);
+      expect(res.col + dc).toBeGreaterThanOrEqual(0);
+      expect(res.col + dc).toBeLessThan(game.cols);
+    }
+  });
+
+  it("prefers a central row when net scores tie", () => {
+    const game = makeGame();
+    // A Block never travels, so on an empty grid every candidate scores net 0
+    // — a pure tie. The centrality tie-break must then pick the central row
+    // rather than drifting to a top/bottom edge.
+    const hand = [{ id: "b", patternIndex: BLOCK_INDEX }];
+    const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+    const res = policy.choosePlacement(makeView(game, hand))!;
+    expect(res).not.toBeNull();
+    // Defensive candidates scatter over rows 0/25/50/75; the central one is 50.
+    expect(res.row).toBe(game.rows / 2);
+  });
+});
