@@ -67,6 +67,20 @@ const SELF_SCORE_PENALTY = 1000;
 const FOOTPRINT_OVERLAP_PENALTY = 500;
 const ROW_TIEBREAKER_WEIGHT = 0.1;
 
+// True if any of the pattern's cells would land on an already-live grid cell.
+// Out-of-range rows/cols read as undefined (falsy) via optional chaining.
+function footprintOverlapsGrid(
+  pattern: Pattern,
+  row: number,
+  col: number,
+  grid: boolean[][],
+): boolean {
+  for (const [dr, dc] of pattern.cells) {
+    if (grid[row + dr]?.[col + dc]) return true;
+  }
+  return false;
+}
+
 export class RuleBasedBotPolicy {
   private game: Game;
 
@@ -133,13 +147,7 @@ export class RuleBasedBotPolicy {
         }
 
         // Footprint-overlap penalty: any pattern cell lands on a live grid cell.
-        let footprintOverlap = false;
-        for (const [dr, dc] of pattern.cells) {
-          if (grid[row + dr]?.[col + dc]) {
-            footprintOverlap = true;
-            break;
-          }
-        }
+        const footprintOverlap = footprintOverlapsGrid(pattern, row, col, grid);
 
         // Path-obstruction score: sum live cells in the full row band the
         // pattern spans (minDr−2 buffer … maxDr+2 buffer), across all cols.
@@ -392,15 +400,22 @@ export class SimRankingBotPolicy implements BotPolicy {
       row: number;
       col: number;
       net: number;
+      overlapFree: number;
       centrality: number;
     } | null = null;
 
-    // Tie-break on exact net-score equality: prefer the more central row.
-    // Net is an integer point sum, so ties are exact. Without this, net-0
-    // ties (a placement that neither scores nor blocks) fall to the first
-    // shortlist entry, which the offensive heuristic biases toward the low-
-    // obstruction top/bottom edges — the bot would drift to the score-zone
-    // L-arms even when they do not help. Centrality reserves the edges for
+    // Lexicographic ranking: (1) net score, (2) no footprint overlap,
+    // (3) central row. Net is an integer point sum, so ties are exact and
+    // common on a sparse board (a block neither scores nor blocks → net 0).
+    //
+    // The overlap tier is load-bearing: without it, equal-net ties let a
+    // defensive piece land on already-live cells — stacking on another
+    // defensive piece, or dropping onto a friendly offensive piece and
+    // destroying it on the first tick. (A scoring piece is already protected
+    // by the net comparison; overlap only decides net-neutral cases.)
+    //
+    // The centrality tier keeps net+overlap ties off the low-obstruction
+    // top/bottom edges (the score-zone L-arms), reserving those for
     // placements that genuinely improve the net score.
     const midRow = this.game.rows / 2;
 
@@ -412,13 +427,19 @@ export class SimRankingBotPolicy implements BotPolicy {
       const candidates = this.generateShortlist(card, pattern, view.grid);
       for (const { row, col } of candidates) {
         const net = this.peekNetScore(view.grid, pattern, row, col);
+        const overlapFree = footprintOverlapsGrid(pattern, row, col, view.grid)
+          ? 0
+          : 1;
         const centrality = -Math.abs(row - midRow); // higher = more central
         if (
           best === null ||
           net > best.net ||
-          (net === best.net && centrality > best.centrality)
+          (net === best.net &&
+            (overlapFree > best.overlapFree ||
+              (overlapFree === best.overlapFree &&
+                centrality > best.centrality)))
         ) {
-          best = { cardId: card.id, row, col, net, centrality };
+          best = { cardId: card.id, row, col, net, overlapFree, centrality };
         }
       }
     }
