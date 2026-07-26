@@ -351,3 +351,28 @@ describe("SimRankingBotPolicy — on-grid placement", () => {
     expect(res.row).toBe(game.rows / 2);
   });
 });
+
+describe("SimRankingBotPolicy — overlap avoidance", () => {
+  it("avoids landing on existing cells on a net tie (no stacking/destruction)", () => {
+    const game = makeGame();
+    // Pre-stamp an inert 2x2 block at a central defensive scatter point
+    // (row 50, first P2 column), as if a piece were already placed there
+    // this phase. A second block placed anywhere scores net 0 — a pure tie —
+    // so only the overlap tie-break keeps it off the occupied cells.
+    const occ = game.zones.rightStart;
+    game.grid[50]![occ] = true;
+    game.grid[50]![occ + 1] = true;
+    game.grid[51]![occ] = true;
+    game.grid[51]![occ + 1] = true;
+
+    const hand = [{ id: "d", patternIndex: BLOCK_INDEX }];
+    const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+    const res = policy.choosePlacement(makeView(game, hand))!;
+    expect(res).not.toBeNull();
+
+    const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
+    for (const [dr, dc] of pattern.cells) {
+      expect(game.grid[res.row + dr]?.[res.col + dc] ?? false).toBe(false);
+    }
+  });
+});
