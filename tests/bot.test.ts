@@ -40,6 +40,9 @@ describe("BotView — fairness", () => {
       opponentCardCount: game.getHand(1).length,
       ownScore: game.scorePlayer2,
       opponentScore: game.scorePlayer1,
+      opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
     };
 
     // Only a number — not an array of cards
@@ -82,6 +85,9 @@ describe("DummyBotPolicy — chooseBuy", () => {
       opponentCardCount: 0,
       ownScore: 0,
       opponentScore: 0,
+      opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
     };
 
     const bundles = policy.chooseBuy(view);
@@ -126,6 +132,9 @@ describe("DummyBotPolicy — choosePlacement", () => {
         opponentCardCount: 0,
         ownScore: 0,
         opponentScore: 0,
+        opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
       };
 
       const { row, col } = policy.choosePlacementForCard(view, card);
@@ -232,6 +241,9 @@ describe("Bot — headless full game", () => {
         opponentCardCount: 0,
         ownScore: 0,
         opponentScore: 0,
+        opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
       });
       for (const b of bundles) {
         for (let i = 0; i < b.count; i++) game.buyPattern(2, b.patternIndex);
@@ -283,6 +295,9 @@ describe("Bot — headless full game", () => {
               opponentCardCount: game.getHand(1).length,
               ownScore: game.scorePlayer2,
               opponentScore: game.scorePlayer1,
+              opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
             },
             card,
           );

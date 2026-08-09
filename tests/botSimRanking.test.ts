@@ -9,7 +9,7 @@ import { LocalSyncManager } from "../src/syncManager.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";
 import { PATTERNS } from "../src/patterns.js";
 import { makeGame, LWSS_INDEX, BLOCK_INDEX } from "./_helpers.js";
-import { CONFIG } from "../src/config.js";
+import { CONFIG, simGenerationsForPhase } from "../src/config.js";
 
 function makeView(game: ReturnType<typeof makeGame>, ownHand: BotView["ownHand"]): BotView {
   return {
@@ -20,6 +20,9 @@ function makeView(game: ReturnType<typeof makeGame>, ownHand: BotView["ownHand"]
     opponentCardCount: game.getHand(1).length,
     ownScore: game.scorePlayer2,
     opponentScore: game.scorePlayer1,
+    opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
   };
 }
 
@@ -184,6 +187,50 @@ describe("SimRankingBotPolicy — early termination", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Horizon tracks the per-phase ramp
+// ---------------------------------------------------------------------------
+//
+// The policy is constructed once per game but simGenerations ramps up every
+// phase. A horizon cached in the constructor would peek the phase-1 window
+// while the real sim runs longer — travelling spaceships would fall outside
+// it and rank as net 0, which is the exact blind spot the full-length default
+// exists to prevent. Reading the private getter is deliberate: the failure is
+// silent in behaviour (subtly worse placements), so it needs a direct assert.
+
+function readHorizon(policy: SimRankingBotPolicy): number {
+  return (policy as unknown as { horizon: number }).horizon;
+}
+
+describe("SimRankingBotPolicy — horizon follows simGenerations", () => {
+  it("defaults to the game's current simulation length, re-read per phase", () => {
+    const game = makeGame();
+    const policy = new SimRankingBotPolicy(game);
+
+    expect(readHorizon(policy)).toBe(game.simGenerations);
+
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+    game.advanceAfterSimulation();
+
+    expect(game.simGenerations).toBeGreaterThan(
+      simGenerationsForPhase(1),
+    );
+    expect(readHorizon(policy)).toBe(game.simGenerations);
+  });
+
+  it("an explicit horizon option still pins the value across phases", () => {
+    const game = makeGame();
+    const policy = new SimRankingBotPolicy(game, { horizon: 50 });
+
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+    game.advanceAfterSimulation();
+
+    expect(readHorizon(policy)).toBe(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Bundle defensively stocked
 // ---------------------------------------------------------------------------
 
@@ -294,6 +341,9 @@ describe("SimRankingBotPolicy — regression full game", () => {
             opponentCardCount: game.getHand(1).length,
             ownScore: game.scorePlayer2,
             opponentScore: game.scorePlayer1,
+            opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
           };
           const result = policy.choosePlacement(view);
           if (!result) break;
@@ -347,8 +397,14 @@ describe("SimRankingBotPolicy — on-grid placement", () => {
     const policy = new SimRankingBotPolicy(game, { horizon: 10 });
     const res = policy.choosePlacement(makeView(game, hand))!;
     expect(res).not.toBeNull();
-    // Defensive candidates scatter over rows 0/25/50/75; the central one is 50.
-    expect(res.row).toBe(game.rows / 2);
+    // Asserted as a property, not an exact row: the scatter's row spacing is
+    // derived from DEFENSIVE_SHORTLIST_SIZE, so pinning the literal row makes
+    // this test fail whenever that constant is tuned, without anything being
+    // wrong. What must hold is that the tie lands nearer the middle than the
+    // score-zone L-arms it exists to avoid.
+    const distanceFromCentre = Math.abs(res.row - game.rows / 2);
+    const distanceFromNearestEdge = Math.min(res.row, game.rows - 1 - res.row);
+    expect(distanceFromCentre).toBeLessThan(distanceFromNearestEdge);
   });
 });
 

@@ -18,6 +18,9 @@ function makeView(game: Game): BotView {
     opponentCardCount: game.getHand(1).length,
     ownScore: game.scorePlayer2,
     opponentScore: game.scorePlayer1,
+    opponentPlacements: [],
+    observedScoreRows: [],
+    observedMotion: [],
   };
 }
 
