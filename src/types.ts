@@ -1,10 +1,35 @@
 // Shared types and interfaces
 
+// How a pattern moves once the simulation runs, as seen in P1's base
+// orientation (travelling towards P2, i.e. to the right). Mirroring for P2
+// flips the column direction only — the vertical component is unchanged, so
+// one profile per pattern covers both players.
+//
+// These are measured, not assumed: an orthogonal spaceship holds its row
+// exactly and advances one column per two generations; a glider advances one
+// row per column travelled, at one column per four generations. A gun does
+// not move itself but emits a diagonal stream, so it is described by the
+// stream's geometry and flagged as a continuous source.
+export interface PatternMovement {
+  // "static"     — still lifes and oscillators; no threat, never intercepted
+  // "orthogonal" — spaceships; row is preserved exactly
+  // "diagonal"   — gliders; row drifts by rowPerCol per column travelled
+  // "emitter"    — glider guns; stationary, but a continuous diagonal stream
+  kind: "static" | "orthogonal" | "diagonal" | "emitter";
+  // Columns advanced per generation (0 for static). c/2 ships = 0.5,
+  // c/4 gliders and gun streams = 0.25.
+  colsPerGen: number;
+  // Rows drifted per column advanced. 0 for orthogonal, -1 travelling up,
+  // +1 travelling down.
+  rowPerCol: number;
+}
+
 export interface Pattern {
   name: string;
   cells: [number, number][]; // [row, col] offsets
   previewGridSize: number;
   previewGenerations: number;
+  movement: PatternMovement;
 }
 
 export type Player = 1 | 2;

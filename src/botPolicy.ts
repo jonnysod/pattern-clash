@@ -8,12 +8,25 @@
 // It exposes only what a human player could see on screen:
 // own hand (full), opponent card count (never contents), public grid.
 
-import type { Card, Pattern } from "./types.js";
+import type { Card, Pattern, ScoreEvent } from "./types.js";
 import type { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { Engine } from "./engine.js";
 import { CONFIG } from "./config.js";
+
+// An opponent placement the bot has already witnessed this place phase.
+//
+// Fair by the game's own standard: a placement is public. The online
+// protocol puts patternIndex on the wire in the `placement` action (only
+// `buyConfirm` withholds it), so a remote human client learns exactly this,
+// at exactly this moment. What stays hidden is the *hand* — cards not yet
+// played — which is what the anti-sniffing model protects.
+export interface OpponentPlacement {
+  patternIndex: number;
+  row: number;
+  col: number;
+}
 
 export interface BotView {
   grid: boolean[][];
@@ -23,6 +36,49 @@ export interface BotView {
   opponentCardCount: number; // count only — contents are never exposed
   ownScore: number;
   opponentScore: number;
+  // Placements made by the opponent during the *current* place phase, in
+  // order. Scoped to this phase on purpose: no simulation runs during a
+  // place phase, so a piece is still exactly where it was put and the
+  // trajectory projection below is exact.
+  opponentPlacements: OpponentPlacement[];
+  // Rows where the opponent actually scored during the previous simulation
+  // phase, heaviest first. This is the bot's threat signal for anything it
+  // did not witness being placed — above all the stationary debris a crashed
+  // spaceship leaves behind, which keeps scoring forever without ever moving.
+  //
+  // Observation rather than a forward simulation of the current board, by
+  // design: it is exactly what a human sees while watching the "+N" floaters
+  // in the sim phase, and it is fact rather than extrapolation of a board
+  // both players are about to reshape with new placements. The trade is
+  // accepted knowingly — a piece already in flight that has not scored yet
+  // is invisible here until the phase in which it first lands.
+  //
+  // Empty in phase 1: there is no previous simulation, and the board is empty.
+  observedScoreRows: number[];
+  // Things that were seen *travelling* towards us during the previous
+  // simulation phase, with the velocity measured from two observed frames.
+  //
+  // This is the third and last threat class, and it is disjoint from the other
+  // two: a piece placed this phase has not moved yet (no simulation runs
+  // during a place phase), and a piece still in flight has not scored yet, so
+  // neither of the other signals can see it. Left uncovered it is expensive —
+  // a spaceship launched from the back of the opponent's zone needs 184
+  // generations to arrive, so it crosses a phase boundary in silence and then
+  // lands for ~275 points.
+  //
+  // Measured rather than looked up: the frame diff yields the velocity
+  // directly, so this also covers movers that were never witnessed as a
+  // placement, such as the glider stream a gun emits.
+  observedMotion: MovingThreat[];
+}
+
+// A moving object observed on the board, in cells per generation. colsPerGen
+// is positive when it is travelling towards us (increasing columns).
+export interface MovingThreat {
+  row: number; // centroid row in the most recent observed frame
+  col: number; // centroid column in the most recent observed frame
+  colsPerGen: number;
+  rowsPerGen: number;
 }
 
 export interface BuyBundle {
@@ -256,8 +312,10 @@ export class DummyBotPolicy implements BotPolicy {
 const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
 
 // Horizon defaults to the game's full simulation length (game.simGenerations,
-// currently 150) — the real sim runs exactly that many generations and then
-// stops, so anything that ever scores does so within this window. A shorter
+// which ramps 150 → 250 across the six phases) — the real sim runs exactly
+// that many generations and then stops, so anything that ever scores does so
+// within this window. Because it ramps, the value must be read per decision
+// rather than cached at construction (see the horizon getter). A shorter
 // horizon silently mis-ranks travelling spaceships: an orthogonal ship moves
 // at c/2 (1 cell per 2 gens) and needs ~126 gens to cross from the front of
 // P2's zone to the left score column, so a 50-gen peek returns 0 for exactly
@@ -268,12 +326,76 @@ const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
 // Cost is ~linear in the horizon (~13 ms/gen for a 6-card hand on a 100×100
 // grid, worst case = first placement of a phase) and plateaus past ~225 gens
 // as the board stabilises (peek early-terminates via detectStablePeriod).
-// At 150 a single decision blocks ~1.9 s synchronously — the 600 ms pacing
-// window is exceeded, so a web worker is the next escalation if that freeze
-// becomes noticeable (do NOT lower the horizon to compensate: that re-blinds
-// the spaceship ranking this default exists to fix).
+// At 150 a single decision blocks ~1.9 s synchronously and the late-phase 250
+// sits at roughly the plateau (~2.8 s) — the 600 ms pacing window is exceeded
+// either way, so a web worker is the next escalation if that freeze becomes
+// noticeable (do NOT lower the horizon to compensate: that re-blinds the
+// spaceship ranking this default exists to fix).
 const SHORTLIST_SIZE = 6;
+// Left at 16 deliberately. Widening to 24 was tried when score-source detection
+// arrived, on the theory that two threat signals and several simultaneous
+// threats need more room. Measured: it changed no decision in any scenario —
+// the debris answer and all multi-threat answers were identical — and cost 27%
+// more time per decision (4.5 s vs 3.3 s for a 7-card hand at horizon 250).
+// Aiming the candidates well is what mattered, not offering more of them.
 const DEFENSIVE_SHORTLIST_SIZE = 16;
+
+// ---------------------------------------------------------------------------
+// Threat model (Fix 3b)
+// ---------------------------------------------------------------------------
+//
+// The interception row is a *function of the interception column*, not a
+// fixed row. For an orthogonal spaceship the function is constant — it holds
+// its row, so blocking anywhere in that row works. For a glider it has slope
+// ±1: a glider placed at row 10 / col 20 enters P2's zone (col 66) at row 56.
+// A band around the *placement* row would miss it by 46 rows, which is why
+// this projects per candidate column instead of scattering around a row.
+//
+// A pattern is only worth intercepting if it can arrive at all. A glider
+// whose diagonal leaves the grid before reaching the defended zone dies at
+// the edge and is no threat — checking the row at the zone's near edge is
+// enough, since the drift is monotonic in the column.
+//
+// Deliberately *not* filtered by time: "cannot arrive within this phase's
+// generations" is not the same as harmless, because the board carries over
+// and a slow glider simply lands next phase. Only leaving the grid is a real
+// all-clear.
+const THREAT_WEIGHT: Record<string, number> = {
+  static: 0, // still lifes and oscillators never travel — ignore
+  orthogonal: 1,
+  diagonal: 1,
+  emitter: 2, // a gun keeps producing; one block never retires the threat
+};
+
+// Vertical reference point of a placed pattern, used as the origin of its
+// trajectory. The bounding-box centre tracks the measured centroid closely
+// for ships and gliders, and lands within a couple of rows of a gun's muzzle
+// (a 36-row gun placed at row 30 emits from ~row 48). Residual offset is
+// absorbed by INTERCEPT_ROW_BAND.
+function patternSourceRow(pattern: Pattern, placedRow: number): number {
+  let maxRowOffset = 0;
+  for (const [rowOffset] of pattern.cells) {
+    if (rowOffset > maxRowOffset) maxRowOffset = rowOffset;
+  }
+  return placedRow + Math.floor((maxRowOffset + 1) / 2);
+}
+
+// Rows either side of the projected intercept row to also offer. Covers the
+// bounding-box/centroid residual and the fact that a blocker sitting exactly
+// in a ship's path is not always the position that actually stops it —
+// Conway collisions are offset-sensitive. The sim ranking picks the winner;
+// this only has to put candidates in the right neighbourhood.
+const INTERCEPT_ROW_BAND = 2;
+
+// Share of the defensive shortlist reserved for threat-projected candidates.
+// The remainder stays a uniform scatter so a misread threat (or none at all)
+// never leaves the ranker without options.
+const THREAT_CANDIDATE_SHARE = 0.75;
+
+// Rows of clearance a net-neutral placement wants from anything already in our
+// zone. Wide enough to break up a clump, narrow enough that on a busy board
+// the tier simply goes inert rather than forcing pieces to the edges.
+const SPREAD_MIN_ROWS = 10;
 
 // ---------------------------------------------------------------------------
 // Budget-aware buy planner (Stufe 4)
@@ -306,11 +428,20 @@ function clampShare(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+// Cap on the *number* of defensive cards when nothing on the board is scoring
+// against us. Not zero: one absorber is cheap insurance against a threat placed
+// later in the same phase, which no peek of the current board can see yet.
+const DEFENSE_CAP_WITHOUT_THREAT = 1;
+
 // Target fraction of bought slots that should be offense, from view state.
-function computeOffenseShare(view: BotView): number {
+// `underThreat` comes from the score-source peek — see planBudgetAwareBuy.
+function computeOffenseShare(view: BotView, underThreat: boolean): number {
   const scoreDiff = view.ownScore - view.opponentScore; // + = ahead
 
   let share = BASE_OFFENSE_SHARE;
+  // Nothing is scoring against us: defensive cards have nothing to block, and
+  // use-it-or-lose-it would force them onto the board anyway. Buy offense.
+  if (!underThreat) return 0.85;
   // Ahead → tilt defensive (protect the lead); behind → tilt offensive
   // (catch up). Saturates around a ±4 point gap.
   share -= clampShare(scoreDiff / 20, -0.2, 0.2);
@@ -329,10 +460,16 @@ function computeOffenseShare(view: BotView): number {
 // the cheapest-affordable preferred pattern in the chosen role (respecting the
 // per-type copy cap and the remaining budget). Leftover budget rolls over —
 // saving across phases is legal and intended.
-export function planBudgetAwareBuy(view: BotView): BuyBundle[] {
+// `underThreat` defaults to true so the Dummy/RuleBased policies and existing
+// callers keep the previous, threat-agnostic behaviour; only SimRankingBotPolicy
+// has a peek to base the answer on.
+export function planBudgetAwareBuy(
+  view: BotView,
+  underThreat: boolean = true,
+): BuyBundle[] {
   const priceOf = (idx: number): number =>
     PATTERNS[idx]?.cells.length ?? Infinity;
-  const offenseShare = computeOffenseShare(view);
+  const offenseShare = computeOffenseShare(view, underThreat);
 
   const counts = new Map<number, number>();
   const copiesOf = (idx: number): number => counts.get(idx) ?? 0;
@@ -358,12 +495,19 @@ export function planBudgetAwareBuy(view: BotView): BuyBundle[] {
       (sum, idx) => sum + copiesOf(idx),
       0,
     );
+    // Hard cap rather than trusting the share arithmetic: with nothing to
+    // block, every defensive card past the first is a forced wasted placement.
+    const defenseCapped =
+      !underThreat && slots - offenseSlots >= DEFENSE_CAP_WITHOUT_THREAT;
+
     const wantOffenseFirst =
-      slots === 0 ? offenseShare >= 0.5 : offenseSlots / slots < offenseShare;
+      defenseCapped ||
+      (slots === 0 ? offenseShare >= 0.5 : offenseSlots / slots < offenseShare);
     const primary = wantOffenseFirst ? OFFENSE_PREFERENCE : DEFENSE_PREFERENCE;
     const secondary = wantOffenseFirst ? DEFENSE_PREFERENCE : OFFENSE_PREFERENCE;
-    // Fall back to the other role if the preferred one has nothing affordable.
-    if (!tryBuy(primary) && !tryBuy(secondary)) break;
+    // Fall back to the other role if the preferred one has nothing affordable,
+    // unless that fallback is the defence we just capped.
+    if (!tryBuy(primary) && (defenseCapped || !tryBuy(secondary))) break;
   }
 
   return [...counts.entries()].map(([patternIndex, count]) => ({
@@ -375,7 +519,7 @@ export function planBudgetAwareBuy(view: BotView): BuyBundle[] {
 export class SimRankingBotPolicy implements BotPolicy {
   private game: Game;
   private shortlistGenerator: RuleBasedBotPolicy;
-  private horizon: number;
+  private horizonOverride: number | undefined;
   private shortlistSize: number;
 
   constructor(
@@ -384,12 +528,27 @@ export class SimRankingBotPolicy implements BotPolicy {
   ) {
     this.game = game;
     this.shortlistGenerator = new RuleBasedBotPolicy(game);
-    this.horizon = options?.horizon ?? game.simGenerations;
+    this.horizonOverride = options?.horizon;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
   }
 
+  // Read per decision, not captured in the constructor: the policy is built
+  // once per game but simGenerations ramps up each phase, so a cached value
+  // would peek the phase-1 window while the real sim runs longer — the exact
+  // "wrong slice" blind spot the full-length horizon exists to avoid.
+  private get horizon(): number {
+    return this.horizonOverride ?? this.game.simGenerations;
+  }
+
   chooseBuy(view: BotView): BuyBundle[] {
-    return planBudgetAwareBuy(view);
+    // Buying defence only pays when there is something to defend against.
+    // Without this the bot bought its defensive share every phase regardless,
+    // and use-it-or-lose-it then forced those blocks onto the board somewhere
+    // — which is what the clump of blocks in the middle of an empty board was.
+    const underThreat =
+      view.observedScoreRows.length > 0 ||
+      view.observedMotion.some((m) => m.colsPerGen > 0);
+    return planBudgetAwareBuy(view, underThreat);
   }
 
   choosePlacement(
@@ -401,12 +560,14 @@ export class SimRankingBotPolicy implements BotPolicy {
       col: number;
       net: number;
       overlapFree: number;
+      spread: number;
       centrality: number;
     } | null = null;
 
     // Lexicographic ranking: (1) net score, (2) no footprint overlap,
-    // (3) central row. Net is an integer point sum, so ties are exact and
-    // common on a sparse board (a block neither scores nor blocks → net 0).
+    // (3) not clumped against what is already there, (4) central row. Net is
+    // an integer point sum, so ties are exact and common on a sparse board
+    // (a block neither scores nor blocks → net 0).
     //
     // The overlap tier is load-bearing: without it, equal-net ties let a
     // defensive piece land on already-live cells — stacking on another
@@ -414,6 +575,24 @@ export class SimRankingBotPolicy implements BotPolicy {
     // destroying it on the first tick. (A scoring piece is already protected
     // by the net comparison; overlap only decides net-neutral cases.)
     //
+    // The spread tier stops net-neutral pieces from piling into one row.
+    // Without it every tie fell through to centrality, which always answers
+    // "the middle" — so a hand with nothing to block put its whole defence in
+    // a row-50 clump. Deliberately a proximity *threshold*, not "maximise
+    // distance": maximising would send the second piece to row 0 or 99, back
+    // into the score-zone L-arms that the centrality tier exists to avoid.
+    //
+    // Occupancy is read from our own zone rather than from a list of our
+    // placements: no extra state to keep in sync, and it also spreads away
+    // from carried-over debris, which is just as good a reason to move.
+    const occupiedRows = this.occupiedRowsInOwnZone(view.grid);
+    const isClear = (row: number): boolean => {
+      const lo = Math.max(0, row - SPREAD_MIN_ROWS);
+      const hi = Math.min(this.game.rows - 1, row + SPREAD_MIN_ROWS);
+      for (let r = lo; r <= hi; r++) if (occupiedRows[r]) return false;
+      return true;
+    };
+
     // The centrality tier keeps net+overlap ties off the low-obstruction
     // top/bottom edges (the score-zone L-arms), reserving those for
     // placements that genuinely improve the net score.
@@ -424,12 +603,13 @@ export class SimRankingBotPolicy implements BotPolicy {
       if (!basePattern) continue;
       const pattern = getPatternForPlayer(basePattern, 2);
 
-      const candidates = this.generateShortlist(card, pattern, view.grid);
+      const candidates = this.generateShortlist(card, pattern, view);
       for (const { row, col } of candidates) {
         const net = this.peekNetScore(view.grid, pattern, row, col);
         const overlapFree = footprintOverlapsGrid(pattern, row, col, view.grid)
           ? 0
           : 1;
+        const spread = isClear(row) ? 1 : 0;
         const centrality = -Math.abs(row - midRow); // higher = more central
         if (
           best === null ||
@@ -437,9 +617,18 @@ export class SimRankingBotPolicy implements BotPolicy {
           (net === best.net &&
             (overlapFree > best.overlapFree ||
               (overlapFree === best.overlapFree &&
-                centrality > best.centrality)))
+                (spread > best.spread ||
+                  (spread === best.spread && centrality > best.centrality)))))
         ) {
-          best = { cardId: card.id, row, col, net, overlapFree, centrality };
+          best = {
+            cardId: card.id,
+            row,
+            col,
+            net,
+            overlapFree,
+            spread,
+            centrality,
+          };
         }
       }
     }
@@ -465,35 +654,128 @@ export class SimRankingBotPolicy implements BotPolicy {
 
   // Card-type-aware candidate generation: spaceships get the offensive
   // shortlist (2a heuristic, top-K instead of single best); static/
-  // oscillating pieces get a broad defensive shortlist. The defensive
-  // generator deliberately does not compute trajectories — it scatters
-  // candidates across rows with live activity and lets the sim ranking
-  // decide which one actually blocks.
+  // oscillating pieces get a defensive shortlist aimed at the trajectories
+  // of threats the opponent has placed this phase, with a uniform scatter
+  // behind it as a floor.
   private generateShortlist(
     card: Card,
     pattern: Pattern,
-    grid: boolean[][],
+    view: BotView,
   ): { row: number; col: number }[] {
     if (OFFENSIVE_PATTERN_INDICES.has(card.patternIndex)) {
       return this.shortlistGenerator.rankPlacements(
         pattern,
-        grid,
+        view.grid,
         this.shortlistSize,
       );
     }
-    return this.generateDefensiveCandidates(pattern, grid);
+    return this.generateDefensiveCandidates(pattern, view);
   }
 
-  // Deliberately not trajectory-aware: a threat seen today at row R may
-  // cross into P2's zone several rows away once it actually arrives
-  // (diagonal drift). Rather than try to predict that, this scatters
-  // candidates evenly across the *whole* P2 zone — coarse rows × a
-  // handful of columns spanning the zone — and lets the sim ranking in
-  // choosePlacement() pick whichever one actually lowers the opponent's
-  // score. "Dumm-breit generieren, Sim richtet."
+  // Project where each witnessed opponent placement crosses the given column,
+  // most dangerous first. Returns intercept rows, not threat positions.
+  //
+  // Skipped: static pieces (weight 0 — an opponent's own block is not coming
+  // for anyone) and any trajectory that has left the grid by the time it
+  // reaches this column, which is a glider that dies against the top or
+  // bottom edge on the way over.
+  private projectInterceptRows(atCol: number, view: BotView): number[] {
+    const rows = this.game.rows;
+    const scored: { row: number; weight: number }[] = [];
+
+    for (const placement of view.opponentPlacements) {
+      const pattern = PATTERNS[placement.patternIndex];
+      if (!pattern) continue;
+
+      const { kind, rowPerCol } = pattern.movement;
+      const weight = THREAT_WEIGHT[kind] ?? 0;
+      if (weight === 0) continue;
+
+      // The opponent is P1, travelling towards increasing columns. A column
+      // already behind the threat is not on its path.
+      const colsToTravel = atCol - placement.col;
+      if (colsToTravel <= 0) continue;
+
+      const interceptRow =
+        patternSourceRow(pattern, placement.row) + rowPerCol * colsToTravel;
+      if (interceptRow < 0 || interceptRow >= rows) continue;
+
+      scored.push({ row: interceptRow, weight });
+    }
+
+    scored.sort((a, b) => b.weight - a.weight);
+    return scored.map((s) => s.row);
+  }
+
+  // Rows of our own zone that already hold something — our earlier placements
+  // this phase, plus any debris that carried over.
+  private occupiedRowsInOwnZone(grid: boolean[][]): boolean[] {
+    const zones = this.game.zones;
+    const occupied = new Array<boolean>(this.game.rows).fill(false);
+    for (let r = 0; r < this.game.rows; r++) {
+      for (let c = zones.rightStart; c < zones.goalZoneRightStart; c++) {
+        if (grid[r]?.[c]) {
+          occupied[r] = true;
+          break;
+        }
+      }
+    }
+    return occupied;
+  }
+
+  // Rows worth defending at this column: observed first, projected second.
+  //
+  // Observed leads because it is the stronger signal for the threats nothing
+  // else can see — stationary wall debris keeps scoring in the same rows phase
+  // after phase, so where it scored last time is where it will score next.
+  //
+  // Projection covers what observation structurally cannot: a piece placed
+  // this phase, which has never scored and therefore appears nowhere in the
+  // previous phase's events.
+  private defensiveRowsFor(atCol: number, view: BotView): number[] {
+    return [
+      ...view.observedScoreRows,
+      ...this.projectMotionRows(atCol, view),
+      ...this.projectInterceptRows(atCol, view),
+    ];
+  }
+
+  // Where each observed mover crosses the given column, using the velocity
+  // measured from the frame diff rather than a table lookup. Same geometry as
+  // projectInterceptRows, but it needs no idea of *what* the thing is — which
+  // is the point, since some movers (a gun's glider stream) were never placed
+  // as a unit and have no pattern to look up.
+  private projectMotionRows(atCol: number, view: BotView): number[] {
+    const rows = this.game.rows;
+    const out: number[] = [];
+
+    for (const mover of view.observedMotion) {
+      // Travelling away from us, or not really travelling: not a threat.
+      if (mover.colsPerGen <= 0) continue;
+      const colsToTravel = atCol - mover.col;
+      if (colsToTravel <= 0) continue;
+
+      const interceptRow = Math.round(
+        mover.row + (mover.rowsPerGen / mover.colsPerGen) * colsToTravel,
+      );
+      // Leaves the board before it gets here — it dies against an edge.
+      if (interceptRow < 0 || interceptRow >= rows) continue;
+
+      out.push(interceptRow);
+    }
+    return out;
+  }
+
+  // Threat-aware defensive shortlist. Most of the budget goes to rows where
+  // a witnessed threat actually crosses each candidate column; the rest stays
+  // a uniform scatter across the zone, so an unseen carry-over threat or a
+  // phase with no placements yet still yields usable candidates.
+  //
+  // The sim ranking in choosePlacement() remains the arbiter — this only
+  // decides what gets offered to it. "Gut zielen, Sim richtet."
   private generateDefensiveCandidates(
     pattern: Pattern,
-    _grid: boolean[][],
+    view: BotView,
   ): { row: number; col: number }[] {
     const zones = this.game.zones;
     const rows = this.game.rows;
@@ -508,21 +790,75 @@ export class SimRankingBotPolicy implements BotPolicy {
       candidateCols.push(col);
     }
 
+    const candidates: { row: number; col: number }[] = [];
+    const seen = new Set<string>();
+    const add = (row: number, col: number): void => {
+      const key = `${row},${col}`;
+      if (seen.has(key)) return;
+      if (!zones.isValidPatternPlacement(pattern, row, col, 2)) return;
+      seen.add(key);
+      candidates.push({ row, col });
+    };
+
+    // Pass 1 — cover the rows that are actually dangerous.
+    //
+    // Columns are walked *farthest first*, which is not the obvious choice.
+    // Measurement drove it: a stationary debris field parked against the wall
+    // is only answerable from the columns right next to it — an exhaustive
+    // sweep found the median placement changes nothing at all (340 points
+    // either way) while a block at column 94 removes 97% of it. A travelling
+    // ship, by contrast, passes through every column on its way, so the far
+    // columns work for it too. Far-first covers both threat classes; the
+    // near-first ordering only ever covered one.
+    //
+    // Threat index is the outer loop so several simultaneous threats each get
+    // their best column before any single one gets its second-best.
+    const rowsByCol = candidateCols.map((col) => ({
+      col,
+      rows: this.defensiveRowsFor(col, view),
+    }));
+    rowsByCol.reverse();
+
+    const threatBudget = Math.floor(
+      DEFENSIVE_SHORTLIST_SIZE * THREAT_CANDIDATE_SHARE,
+    );
+    const deepestThreatList = Math.max(0, ...rowsByCol.map((e) => e.rows.length));
+
+    outer: for (let i = 0; i < deepestThreatList; i++) {
+      for (const { col, rows: threatRows } of rowsByCol) {
+        const threatRow = threatRows[i];
+        if (threatRow === undefined) continue;
+        for (
+          let offset = -INTERCEPT_ROW_BAND;
+          offset <= INTERCEPT_ROW_BAND;
+          offset++
+        ) {
+          if (candidates.length >= threatBudget) break outer;
+          add(threatRow + offset, col);
+        }
+      }
+    }
+
+    // Pass 2 — uniform scatter fills the rest. This is the whole shortlist
+    // when no threat has been witnessed (phase openers, or a phase where the
+    // opponent has yet to place), which keeps the previous behaviour intact
+    // as the floor rather than as the strategy.
     const desiredRows = Math.max(
       1,
       Math.ceil(DEFENSIVE_SHORTLIST_SIZE / candidateCols.length),
     );
     const rowStep = Math.max(1, Math.floor(rows / desiredRows));
 
-    const candidates: { row: number; col: number }[] = [];
+    // Row-at-a-time, not candidate-at-a-time: truncating mid-row would drop
+    // exactly the columns that catch a threat this pass never witnessed —
+    // one stamped onto the grid, or carried over from an earlier phase.
     for (
       let row = 0;
       row < rows && candidates.length < DEFENSIVE_SHORTLIST_SIZE;
       row += rowStep
     ) {
       for (const col of candidateCols) {
-        if (!zones.isValidPatternPlacement(pattern, row, col, 2)) continue;
-        candidates.push({ row, col });
+        add(row, col);
       }
     }
     return candidates;

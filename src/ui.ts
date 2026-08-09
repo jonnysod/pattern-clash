@@ -335,6 +335,9 @@ export class UIController {
     this.activePlacer = this.game.getPhaseStarter();
     this.hoverCol = null;
     this.hoverRow = null;
+    // Last phase's placements have since been simulated — they are no longer
+    // where they were put, so projecting them would aim at ghosts.
+    this.botController?.clearOpponentPlacements();
     logInfo(
       `[Game] Place phase ${this.game.currentPhaseNumber} started. ` +
         `Player ${this.activePlacer} goes first.`,
@@ -524,11 +527,17 @@ export class UIController {
 
   private startSimulation(): void {
     this.stopSimulation();
+    this.botController?.beginSimulationRecording();
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
     const tick = () => {
       if (!this.game.isSimulation) return;
       this.game.computeNextGeneration();
       this.scoreEffects.feed(this.game.scoreEvents);
+      this.botController?.recordScoreEvents(this.game.scoreEvents);
+      this.botController?.recordSimulationFrame(
+        this.game.grid,
+        this.game.currentGeneration,
+      );
       this.updateBudgetScoreDisplay();
       this.updateStatusBar();
       this.renderer.drawGrid();
@@ -564,6 +573,9 @@ export class UIController {
     if (events.length > 0) {
       this.scoreEffects.feed(events);
     }
+    // Same invariant as the floaters: every path that produces events has to
+    // report them, or the bot goes blind to whatever scored during the skip.
+    this.botController?.recordScoreEvents(events);
     this.updateBudgetScoreDisplay();
     this.updateStatusBar();
 
@@ -764,6 +776,14 @@ export class UIController {
           logWarn("[Sync] placement action rejected:", action);
           return;
         }
+        // Let the bot witness the placement before its next turn begins —
+        // beginTurn() below can schedule that turn immediately.
+        this.botController?.recordOpponentPlacement(
+          action.player,
+          action.patternIndex,
+          action.row,
+          action.col,
+        );
         // Local UI follow-up: clear selection, advance turn.
         if (action.player === this.activePlacer) {
           this.selectedCardId = null;

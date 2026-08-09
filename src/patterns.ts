@@ -18,6 +18,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 14,
     previewGenerations: 24,
+    movement: { kind: "orthogonal", colsPerGen: 0.5, rowPerCol: 0 },
   },
   {
     name: "MWSS",
@@ -36,6 +37,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 14,
     previewGenerations: 24,
+    movement: { kind: "orthogonal", colsPerGen: 0.5, rowPerCol: 0 },
   },
   // Still Lifes
   {
@@ -48,6 +50,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 6,
     previewGenerations: 1,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   {
     name: "Beehive",
@@ -61,6 +64,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 8,
     previewGenerations: 1,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   {
     name: "Boat",
@@ -73,6 +77,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 8,
     previewGenerations: 1,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   // Oscillators
   {
@@ -84,6 +89,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 7,
     previewGenerations: 4,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   {
     name: "Toad",
@@ -97,6 +103,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 8,
     previewGenerations: 4,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   {
     name: "Beacon",
@@ -110,6 +117,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 8,
     previewGenerations: 4,
+    movement: { kind: "static", colsPerGen: 0, rowPerCol: 0 },
   },
   // New attack patterns
   {
@@ -123,6 +131,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 12,
     previewGenerations: 20,
+    movement: { kind: "diagonal", colsPerGen: 0.25, rowPerCol: 1 },
   },
   {
     name: "Glider up",
@@ -135,6 +144,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 12,
     previewGenerations: 17,
+    movement: { kind: "diagonal", colsPerGen: 0.25, rowPerCol: -1 },
   },
   {
     name: "HWSS",
@@ -157,6 +167,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 16,
     previewGenerations: 25,
+    movement: { kind: "orthogonal", colsPerGen: 0.5, rowPerCol: 0 },
   },
   {
     name: "Glider Gun up",
@@ -200,6 +211,7 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 40,
     previewGenerations: 60,
+    movement: { kind: "emitter", colsPerGen: 0.25, rowPerCol: -1 },
   },
   {
     name: "Glider Gun down",
@@ -243,5 +255,6 @@ export const PATTERNS: Pattern[] = [
     ],
     previewGridSize: 40,
     previewGenerations: 60,
+    movement: { kind: "emitter", colsPerGen: 0.25, rowPerCol: 1 },
   },
 ];
