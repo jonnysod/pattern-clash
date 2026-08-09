@@ -12,7 +12,7 @@ import type {
 } from "./types.js";
 import { Zones } from "./zones.js";
 import { PATTERNS } from "./patterns.js";
-import { CONFIG } from "./config.js";
+import { CONFIG, simGenerationsForPhase } from "./config.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { Engine } from "./engine.js";
 
@@ -74,7 +74,16 @@ export class Game {
     this.rows = rows;
     this.cols = cols;
     this.zones = new Zones(cols, rows);
-    this.engine = new Engine(rows, cols, this.zones, CONFIG.SIM_GENERATIONS);
+    this.engine = new Engine(rows, cols, this.zones, simGenerationsForPhase(1));
+  }
+
+  // Sync the engine's simulation length to the current phase. Called on
+  // construction-equivalent paths (reset) and at every phase advance, so
+  // simGenerations always matches currentPhaseNumber.
+  private applyPhaseGenerations(): void {
+    this.engine.simGenerations = simGenerationsForPhase(
+      this.currentPhaseNumber,
+    );
   }
 
   //#region Engine delegation
@@ -146,6 +155,7 @@ export class Game {
     this.engine.reset();
     this._phase = "tactical-buy";
     this.currentPhaseNumber = 1;
+    this.applyPhaseGenerations();
     this.scorePlayer1 = 0;
     this.scorePlayer2 = 0;
     this.budgetPlayer1 =
@@ -470,6 +480,7 @@ export class Game {
     }
     this.currentPhaseNumber++;
     this.currentGeneration = 0;
+    this.applyPhaseGenerations();
     this.setPhase("tactical-buy");
   }
   //#endregion

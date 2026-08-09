@@ -9,7 +9,7 @@ import type { DOMRefs } from "./domRefs.js";
 import { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
 import { drawPatternPreview } from "./patternUtils.js";
-import { CONFIG } from "./config.js";
+import { CONFIG, simGenerationsForPhase } from "./config.js";
 
 interface PatternRowRefs {
   countDisplay: HTMLSpanElement;
@@ -79,6 +79,17 @@ export class BuyOverlay {
 
     // Set static maxima
     this.dom.buyOverlaySlotsMax.textContent = String(CONFIG.MAX_SLOTS);
+
+    // Simulation length for this phase. Shown here because the buy overlay
+    // blocks the status bar — you can't shop for reach you can't see, and
+    // the ramp is only a planning tool if it's known before spending.
+    const generations = this.game.simGenerations;
+    this.dom.buyOverlayGenerations.textContent = String(generations);
+    const previous = simGenerationsForPhase(
+      this.game.currentPhaseNumber - 1,
+    );
+    this.dom.buyOverlayGenerationsDelta.textContent =
+      this.game.currentPhaseNumber > 1 ? `+${generations - previous}` : "";
 
     this.refresh();
     this.dom.buyOverlay.style.display = "flex";

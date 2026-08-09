@@ -224,12 +224,17 @@ export class UIController {
       this.pendingBuyers = [this.localPlayer];
     }
 
+    // simGenerations ramps per phase, so the status bar's max has to be
+    // refreshed here — initialRender() only ever sees the phase-1 value.
+    this.dom.maxGenerations.textContent = String(this.game.simGenerations);
+
     this.updateBudgetScoreDisplay();
     this.updateStatusBar();
     this.updateActivePlayerIndicator(null);
     this.cardHand.clear();
     logInfo(
-      `[Game] Buy phase ${this.game.currentPhaseNumber}/${this.game.totalPhases} started`,
+      `[Game] Buy phase ${this.game.currentPhaseNumber}/${this.game.totalPhases} started ` +
+        `(${this.game.simGenerations} generations)`,
     );
     this.promptNextBuyer();
   }

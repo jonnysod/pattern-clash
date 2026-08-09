@@ -26,7 +26,10 @@ interface ScoreBucket {
 export class Engine {
   readonly rows: number;
   readonly cols: number;
-  readonly simGenerations: number;
+  // Not readonly: the main game ramps this up per tactical phase (see
+  // simGenerationsForPhase). Game reassigns it at each phase transition;
+  // the puzzle runner sets it once and leaves it alone.
+  simGenerations: number;
   private readonly zones: Zones;
 
   grid: boolean[][];
