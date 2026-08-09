@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { Game } from "../src/game.js";
-import { CONFIG } from "../src/config.js";
+import { CONFIG, simGenerationsForPhase } from "../src/config.js";
 import { PATTERNS } from "../src/patterns.js";
 import {
   clearGrid,
@@ -363,7 +363,7 @@ describe("Game — Simulation & Scoring", () => {
     expect(game.scoreEvents[0]?.scorer).toBe(2);
   });
 
-  it("isSimulationComplete is true after exactly SIM_GENERATIONS ticks", () => {
+  it("isSimulationComplete is true after exactly simGenerations ticks", () => {
     expect(game.isSimulationComplete()).toBe(false);
     for (let i = 0; i < game.simGenerations; i++) {
       game.computeNextGeneration();
@@ -543,5 +543,80 @@ describe("Game — End Conditions & Phase Flow", () => {
     game.advanceAfterSimulation();
     expect(game.phase).toBe("ended");
     expect(game.currentPhaseNumber).toBe(game.totalPhases);
+  });
+});
+
+describe("Game — Simulation length ramp", () => {
+  let game: Game;
+  beforeEach(() => {
+    game = makeGame();
+  });
+
+  it("simGenerationsForPhase ramps linearly from phase 1", () => {
+    expect(simGenerationsForPhase(1)).toBe(CONFIG.SIM_GENERATIONS_PHASE_1);
+    expect(simGenerationsForPhase(2)).toBe(
+      CONFIG.SIM_GENERATIONS_PHASE_1 + CONFIG.SIM_GENERATIONS_PHASE_STEP,
+    );
+    expect(simGenerationsForPhase(CONFIG.PHASE_COUNT)).toBe(
+      CONFIG.SIM_GENERATIONS_PHASE_1 +
+        (CONFIG.PHASE_COUNT - 1) * CONFIG.SIM_GENERATIONS_PHASE_STEP,
+    );
+  });
+
+  it("a new game starts at the phase-1 length", () => {
+    expect(game.simGenerations).toBe(simGenerationsForPhase(1));
+  });
+
+  it("advanceAfterSimulation raises simGenerations to the new phase's length", () => {
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+    game.advanceAfterSimulation();
+
+    expect(game.currentPhaseNumber).toBe(2);
+    expect(game.simGenerations).toBe(simGenerationsForPhase(2));
+  });
+
+  it("simGenerations tracks the phase across a full game", () => {
+    for (let phase = 1; phase < CONFIG.PHASE_COUNT; phase++) {
+      expect(game.simGenerations).toBe(simGenerationsForPhase(phase));
+      game.setPhase("tactical-place");
+      game.setPhase("simulation");
+      game.advanceAfterSimulation();
+    }
+    expect(game.currentPhaseNumber).toBe(CONFIG.PHASE_COUNT);
+    expect(game.simGenerations).toBe(
+      simGenerationsForPhase(CONFIG.PHASE_COUNT),
+    );
+  });
+
+  it("isSimulationComplete honours the ramped length, not the phase-1 one", () => {
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+    game.advanceAfterSimulation();
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+
+    for (let i = 0; i < simGenerationsForPhase(1); i++) {
+      game.computeNextGeneration();
+    }
+    // Phase 1's length is reached but phase 2 runs longer — not done yet.
+    expect(game.isSimulationComplete()).toBe(false);
+
+    const remaining = simGenerationsForPhase(2) - simGenerationsForPhase(1);
+    for (let i = 0; i < remaining; i++) {
+      game.computeNextGeneration();
+    }
+    expect(game.isSimulationComplete()).toBe(true);
+  });
+
+  it("reset returns simGenerations to the phase-1 length", () => {
+    game.setPhase("tactical-place");
+    game.setPhase("simulation");
+    game.advanceAfterSimulation();
+    expect(game.simGenerations).toBe(simGenerationsForPhase(2));
+
+    game.reset();
+    expect(game.currentPhaseNumber).toBe(1);
+    expect(game.simGenerations).toBe(simGenerationsForPhase(1));
   });
 });
