@@ -109,7 +109,9 @@ export function createDOMRefs() {
     puzzleGenerationCounter: getElement<HTMLSpanElement>(
       "puzzleGenerationCounter",
     ),
+    puzzleMaxGenerations: getElement<HTMLSpanElement>("puzzleMaxGenerations"),
     puzzleSimSkipHint: getElement<HTMLSpanElement>("puzzleSimSkipHint"),
+    puzzleOwnScore: getElement<HTMLSpanElement>("puzzleOwnScore"),
     puzzleOpponentScore: getElement<HTMLSpanElement>("puzzleOpponentScore"),
     puzzleCanvas: getElement<HTMLCanvasElement>("puzzleCanvas"),
     puzzleCardHand1: getElement<HTMLDivElement>("puzzleCardHand1"),

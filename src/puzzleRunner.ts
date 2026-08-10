@@ -35,7 +35,9 @@ export interface PuzzleDOMRefs {
   hint: HTMLParagraphElement;
   doneBtn: HTMLButtonElement;
   generationCounter: HTMLSpanElement;
+  maxGenerations: HTMLSpanElement;
   simSkipHint: HTMLSpanElement;
+  ownScore: HTMLSpanElement;
   opponentScore: HTMLSpanElement;
   resultOverlay: HTMLDivElement;
   resultTitle: HTMLHeadingElement;
@@ -296,7 +298,7 @@ export class PuzzleRunner {
 
     this.renderer.drawGrid();
     this.updateGenerationCounter();
-    this.updateOpponentScore();
+    this.updateScores();
   }
 
   // -------------------------------------------------------------------------
@@ -351,7 +353,7 @@ export class PuzzleRunner {
     this.creditEvents(events);
     this.renderer.drawGrid();
     this.updateGenerationCounter();
-    this.updateOpponentScore();
+    this.updateScores();
 
     if (this.engine.currentGeneration >= this.simGenTarget) {
       this.stopSimulation();
@@ -383,7 +385,7 @@ export class PuzzleRunner {
     const events = this.engine.skipToGeneration(target, period);
     this.scoreEffects?.feed(events);
     this.creditEvents(events);
-    this.updateOpponentScore();
+    this.updateScores();
     this.updateGenerationCounter();
 
     logInfo(
@@ -429,7 +431,7 @@ export class PuzzleRunner {
     if (flushEvents.length > 0) {
       this.scoreEffects?.feed(flushEvents);
       this.creditEvents(flushEvents);
-      this.updateOpponentScore();
+      this.updateScores();
     }
 
     // Hold so floaters are visible before the next phase / result overlay.
@@ -738,9 +740,11 @@ export class PuzzleRunner {
   private updateGenerationCounter(): void {
     const gen = (this.engine?.currentGeneration ?? 0) - this.genDisplayOffset;
     this.dom.generationCounter.textContent = String(gen);
+    this.dom.maxGenerations.textContent = String(this.simGenTarget - this.genDisplayOffset);
   }
 
-  private updateOpponentScore(): void {
+  private updateScores(): void {
+    this.dom.ownScore.textContent = String(this.p1Score);
     this.dom.opponentScore.textContent = String(this.p2Score);
   }
 }
