@@ -21,6 +21,7 @@ function makeView(game: ReturnType<typeof makeGame>, ownHand: BotView["ownHand"]
     ownScore: game.scorePlayer2,
     opponentScore: game.scorePlayer1,
     opponentPlacements: [],
+    ownPlacements: [],
     observedScoreRows: [],
     observedMotion: [],
   };
@@ -342,6 +343,7 @@ describe("SimRankingBotPolicy — regression full game", () => {
             ownScore: game.scorePlayer2,
             opponentScore: game.scorePlayer1,
             opponentPlacements: [],
+            ownPlacements: [],
     observedScoreRows: [],
     observedMotion: [],
           };
@@ -429,6 +431,166 @@ describe("SimRankingBotPolicy — overlap avoidance", () => {
     const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
     for (const [dr, dc] of pattern.cells) {
       expect(game.grid[res.row + dr]?.[res.col + dc] ?? false).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Offence held for the tail of the place phase
+// ---------------------------------------------------------------------------
+//
+// Net score cannot see this: the peek evaluates as if the board froze after
+// our placement, so a spaceship always outranks a block. But while the
+// opponent still holds cards, one cheap block dropped into the ship's lane
+// neutralises it — so the ship must go down last, ideally once the opponent
+// has nothing left to answer with.
+//
+// Mutation check: with the hold removed, the first two cases invert (the
+// LWSS wins on net both times), so both directions are load-bearing.
+
+describe("SimRankingBotPolicy — offence held while the opponent has cards", () => {
+  // Long enough for an LWSS to cross into P1's score column, so the ship
+  // genuinely outranks the block on net and the hold is what decides.
+  const SCORING_HORIZON = 200;
+
+  it("plays the defensive card first while the opponent still holds cards", () => {
+    const game = makeGame();
+    const hand = [
+      { id: "ship", patternIndex: LWSS_INDEX },
+      { id: "block", patternIndex: BLOCK_INDEX },
+    ];
+    const policy = new SimRankingBotPolicy(game, { horizon: SCORING_HORIZON });
+
+    const view = { ...makeView(game, hand), opponentCardCount: 2 };
+    expect(policy.choosePlacement(view)!.cardId).toBe("block");
+  });
+
+  it("plays the spaceship once the opponent's hand is empty", () => {
+    const game = makeGame();
+    const hand = [
+      { id: "ship", patternIndex: LWSS_INDEX },
+      { id: "block", patternIndex: BLOCK_INDEX },
+    ];
+    const policy = new SimRankingBotPolicy(game, { horizon: SCORING_HORIZON });
+
+    const view = { ...makeView(game, hand), opponentCardCount: 0 };
+    expect(policy.choosePlacement(view)!.cardId).toBe("ship");
+  });
+
+  it("still places when only offensive cards are left (use-it-or-lose-it)", () => {
+    const game = makeGame();
+    const hand = [{ id: "ship", patternIndex: LWSS_INDEX }];
+    const policy = new SimRankingBotPolicy(game, { horizon: 30 });
+
+    const view = { ...makeView(game, hand), opponentCardCount: 3 };
+    const res = policy.choosePlacement(view);
+    expect(res).not.toBeNull();
+    expect(res!.cardId).toBe("ship");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ship separation
+// ---------------------------------------------------------------------------
+//
+// Two spaceships launched closer than SHIP_MIN_ROW_SEPARATION destroy each
+// other's debris field on landing and are worth less than one alone
+// (measured: gap 8 → 92, gap 12 → 210, gap 16 → 466 = 2× a single ship).
+// Net score only catches this when the phase runs long enough for both to
+// land, so a tier below net has to answer in the early phases.
+
+describe("SimRankingBotPolicy — ship separation", () => {
+  it("keeps a second ship clear of one launched earlier this phase", () => {
+    const game = makeGame();
+    const firstShipRow = 50;
+    const hand = [{ id: "s2", patternIndex: LWSS_INDEX }];
+
+    const policy = new SimRankingBotPolicy(game, { horizon: 30 });
+    const res = policy.choosePlacement({
+      ...makeView(game, hand),
+      opponentCardCount: 0,
+      ownPlacements: [{ patternIndex: LWSS_INDEX, row: firstShipRow, col: 70 }],
+    })!;
+
+    expect(res).not.toBeNull();
+    expect(Math.abs(res.row - firstShipRow)).toBeGreaterThanOrEqual(16);
+  });
+
+  it("does not constrain a defensive card by ship separation", () => {
+    const game = makeGame();
+    const hand = [{ id: "b1", patternIndex: BLOCK_INDEX }];
+
+    // A block near the ship is fine — it leaves no debris field of its own.
+    // Without the offensive-only guard this row would be pushed away too.
+    const rows = new Set<number>();
+    for (const shipRow of [20, 50, 80]) {
+      const policy = new SimRankingBotPolicy(game, { horizon: 20 });
+      const res = policy.choosePlacement({
+        ...makeView(game, hand),
+        opponentCardCount: 0,
+        ownPlacements: [{ patternIndex: LWSS_INDEX, row: shipRow, col: 70 }],
+      })!;
+      rows.add(res.row);
+    }
+    // The block's chosen row is unaffected by where our ship went.
+    expect(rows.size).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tie-break jitter
+// ---------------------------------------------------------------------------
+
+describe("SimRankingBotPolicy — tie-break jitter", () => {
+  it("varies among equally ranked placements", () => {
+    const game = makeGame();
+    const hand = [{ id: "b1", patternIndex: BLOCK_INDEX }];
+
+    // One shared stream across the draws: on an empty board a lone block is
+    // net-neutral everywhere, so the top-ranked set has many members.
+    const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+    const seen = new Set<string>();
+    for (let i = 0; i < 25; i++) {
+      const res = policy.choosePlacement(makeView(game, hand))!;
+      seen.add(`${res.row},${res.col}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("is deterministic per instance so tests stay reproducible", () => {
+    const game = makeGame();
+    const hand = [{ id: "b1", patternIndex: BLOCK_INDEX }];
+
+    const draw = (): string[] => {
+      const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+      return Array.from({ length: 5 }, () => {
+        const r = policy.choosePlacement(makeView(game, hand))!;
+        return `${r.row},${r.col}`;
+      });
+    };
+
+    expect(draw()).toEqual(draw());
+  });
+
+  it("never samples past a ranking tier — a scoring move always wins", () => {
+    const game = makeGame();
+    const hand = [{ id: "s1", patternIndex: LWSS_INDEX }];
+
+    // Horizon long enough for the ship to reach P1's score column: exactly one
+    // ranking level is non-tied, and every draw must respect it.
+    const policy = new SimRankingBotPolicy(game, { horizon: 200 });
+    for (let i = 0; i < 5; i++) {
+      const res = policy.choosePlacement({
+        ...makeView(game, hand),
+        opponentCardCount: 0,
+      })!;
+      const pattern = getPatternForPlayer(PATTERNS[LWSS_INDEX]!, 2);
+      const probe = makeGame();
+      for (const [dr, dc] of pattern.cells) {
+        probe.grid[res.row + dr]![res.col + dc] = true;
+      }
+      for (let g = 0; g < 200; g++) probe.computeNextGeneration();
+      expect(probe.scorePlayer2).toBeGreaterThan(0);
     }
   });
 });

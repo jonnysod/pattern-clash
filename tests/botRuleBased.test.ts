@@ -19,6 +19,7 @@ function makeView(game: Game): BotView {
     ownScore: game.scorePlayer2,
     opponentScore: game.scorePlayer1,
     opponentPlacements: [],
+    ownPlacements: [],
     observedScoreRows: [],
     observedMotion: [],
   };

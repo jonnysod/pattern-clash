@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { SimRankingBotPolicy } from "../src/botPolicy.js";
-import type { BotView, OpponentPlacement } from "../src/botPolicy.js";
+import type { BotView, WitnessedPlacement } from "../src/botPolicy.js";
 import { BotController } from "../src/botController.js";
 import { LocalSyncManager } from "../src/syncManager.js";
 import { PATTERNS } from "../src/patterns.js";
@@ -24,7 +24,7 @@ const GUN_DOWN_INDEX = 12;
 function makeView(
   game: ReturnType<typeof makeGame>,
   ownHand: BotView["ownHand"],
-  opponentPlacements: OpponentPlacement[] = [],
+  opponentPlacements: WitnessedPlacement[] = [],
   observedScoreRows: number[] = [],
 ): BotView {
   return {
@@ -36,6 +36,7 @@ function makeView(
     ownScore: game.scorePlayer2,
     opponentScore: game.scorePlayer1,
     opponentPlacements,
+    ownPlacements: [],
     observedScoreRows,
     observedMotion: [],
   };
@@ -163,6 +164,18 @@ describe("Pattern movement profiles — verified against simulation", () => {
 
 // The bot is P2. Its own zone is the right-hand one; a P1 threat travels
 // towards increasing columns.
+// Tie-break jitter draws from the policy's own seeded stream, so two calls on
+// one instance can legitimately pick different members of an equal-ranked set.
+// The tests below compare *decisions*, not draws, so each call gets a fresh
+// instance — same seed, same stream position, differences attributable only to
+// the view.
+function decideFresh(
+  game: ReturnType<typeof makeGame>,
+  view: BotView,
+): { cardId: string; row: number; col: number } | null {
+  return new SimRankingBotPolicy(game, { horizon: 20 }).choosePlacement(view);
+}
+
 describe("SimRankingBotPolicy — threat-aimed defence", () => {
   it("answers an orthogonal ship in the row it was placed in", () => {
     const game = makeGame();
@@ -188,7 +201,7 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
   it("answers a glider at its projected row, not its placement row", () => {
     const game = makeGame();
     const policy = new SimRankingBotPolicy(game, { horizon: 20 });
-    const threat: OpponentPlacement = {
+    const threat: WitnessedPlacement = {
       patternIndex: GLIDER_DOWN_INDEX,
       row: 10,
       col: 20,
@@ -213,14 +226,14 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
 
   it("ignores a defensive placement — an opponent's own block is no threat", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 20 });
-
-    const withStatic = policy.choosePlacement(
+    const withStatic = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], [
         { patternIndex: BLOCK_INDEX, row: 30, col: 10 },
       ]),
     );
-    const withNothing = policy.choosePlacement(
+    const withNothing = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], []),
     );
 
@@ -230,7 +243,8 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
 
     // Contrast, so the assertion above cannot pass vacuously: a *moving*
     // piece at the same spot must change the decision.
-    const withThreat = policy.choosePlacement(
+    const withThreat = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], [
         { patternIndex: MWSS_INDEX, row: 30, col: 10 },
       ]),
@@ -240,16 +254,17 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
 
   it("ignores a glider whose diagonal leaves the grid before arriving", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 20 });
 
     // Travelling up from row 5: it hits the top edge long before reaching
     // P2's zone, so it never becomes a threat and must not attract a card.
-    const doomed = policy.choosePlacement(
+    const doomed = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], [
         { patternIndex: GLIDER_UP_INDEX, row: 5, col: 10 },
       ]),
     );
-    const withNothing = policy.choosePlacement(
+    const withNothing = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], []),
     );
 
@@ -257,7 +272,8 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
 
     // Contrast: the same glider launched from mid-field stays on the grid all
     // the way over and must be answered.
-    const arriving = policy.choosePlacement(
+    const arriving = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], [
         { patternIndex: GLIDER_UP_INDEX, row: 80, col: 10 },
       ]),
@@ -267,15 +283,16 @@ describe("SimRankingBotPolicy — threat-aimed defence", () => {
 
   it("does not aim at a threat already past the candidate column", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 20 });
 
     // Placed beyond P2's zone entirely — nothing in the zone is on its path.
-    const behind = policy.choosePlacement(
+    const behind = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], [
         { patternIndex: MWSS_INDEX, row: 30, col: game.cols - 2 },
       ]),
     );
-    const withNothing = policy.choosePlacement(
+    const withNothing = decideFresh(
+      game,
       makeView(game, [{ id: "d1", patternIndex: BLOCK_INDEX }], []),
     );
 
@@ -489,6 +506,7 @@ describe("BotController — observed motion", () => {
       grid: game.grid,
       ownHand: [{ id: "d1", patternIndex: BLOCK_INDEX }],
       opponentPlacements: [],
+      ownPlacements: [],
     })!;
     expect(result).not.toBeNull();
 
@@ -526,6 +544,7 @@ describe("SimRankingBotPolicy — buy gating", () => {
       ownScore: 0,
       opponentScore: 0,
       opponentPlacements: [],
+      ownPlacements: [],
       observedScoreRows,
       observedMotion: [],
     };
@@ -600,8 +619,8 @@ describe("BotController — opponent placement record", () => {
 
   it("records opponent placements and exposes them in the view", () => {
     const { controller, seen } = setup();
-    controller.recordOpponentPlacement(1, MWSS_INDEX, 30, 10);
-    controller.recordOpponentPlacement(1, GLIDER_DOWN_INDEX, 12, 8);
+    controller.recordPlacement(1, MWSS_INDEX, 30, 10);
+    controller.recordPlacement(1, GLIDER_DOWN_INDEX, 12, 8);
     controller["executePlacement"]();
 
     expect(seen[0]!.opponentPlacements).toEqual([
@@ -612,7 +631,7 @@ describe("BotController — opponent placement record", () => {
 
   it("ignores the bot's own placements", () => {
     const { controller, seen } = setup();
-    controller.recordOpponentPlacement(2, MWSS_INDEX, 30, 80);
+    controller.recordPlacement(2, MWSS_INDEX, 30, 80);
     controller["executePlacement"]();
 
     expect(seen[0]!.opponentPlacements).toEqual([]);
@@ -620,7 +639,7 @@ describe("BotController — opponent placement record", () => {
 
   it("ignores unresolved placeholder cards", () => {
     const { controller, seen } = setup();
-    controller.recordOpponentPlacement(1, -1, 30, 10);
+    controller.recordPlacement(1, -1, 30, 10);
     controller["executePlacement"]();
 
     expect(seen[0]!.opponentPlacements).toEqual([]);
@@ -628,8 +647,8 @@ describe("BotController — opponent placement record", () => {
 
   it("clears the record between place phases", () => {
     const { controller, seen } = setup();
-    controller.recordOpponentPlacement(1, MWSS_INDEX, 30, 10);
-    controller.clearOpponentPlacements();
+    controller.recordPlacement(1, MWSS_INDEX, 30, 10);
+    controller.clearPlacements();
     controller["executePlacement"]();
 
     expect(seen[0]!.opponentPlacements).toEqual([]);
