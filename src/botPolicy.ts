@@ -479,6 +479,42 @@ function clampShare(x: number, lo: number, hi: number): number {
 // later in the same phase, which no peek of the current board can see yet.
 const DEFENSE_CAP_WITHOUT_THREAT = 1;
 
+// How hard to chase card-count parity with the opponent, as a fraction of
+// their hand: 0 disables the rule entirely, 1 aims to match them card for card.
+//
+// Why parity is worth budget at all: the place phase alternates, so whoever
+// still holds cards when the other runs out plays the remainder unanswered.
+// Combined with holding offence back (see choosePlacement), every defensive
+// card bought past the opponent's count converts one of our spaceships from
+// "answerable by a 4-cell block" into "unanswerable". The condition for *all*
+// our offence to land in that tail is defence >= their card count.
+//
+// Why not 1: full parity is not affordable. From phase 2 the budget, not the
+// slot cap, is the binding constraint — 25 points buys either two MWSS and one
+// block, or one MWSS and four cheap cards. Chasing parity against a five-card
+// hand would cost the entire offence, and offence is the win condition.
+//
+// 0.4 is where the tempo is still free. Swept against a five-card opponent,
+// cards bought in phases 3–6 and how much offence survives:
+//
+//   0.0 / 0.3 → 3 cards, 2 spaceships   (target ≤ 1, rule never fires)
+//   0.4       → 4–5 cards, 2 spaceships
+//   0.6 / 0.8 → 4–5 cards, 1 spaceship
+//   1.0       → 5–7 cards, 1 spaceship
+//
+// The step from 0.4 to 0.6 costs an entire MWSS and buys no extra cards, so
+// everything above 0.4 pays for tempo with the win condition. Whether that is
+// ever worth it depends on how reliably a human blocks a spaceship they can
+// see — which no simulation here can answer, since it is the whole reason the
+// trade exists. Hence a playtest dial, defaulted to the free end of it.
+const DEFENCE_PARITY_TARGET = 0.4;
+
+// Never trade away the last spaceship, whatever parity would like. Enforced by
+// ordering rather than by reserving budget: below the floor the offensive buy
+// simply goes first, which on an empty basket is the very first purchase, so
+// the strongest affordable spaceship is secured before parity spends anything.
+const OFFENCE_FLOOR_CARDS = 1;
+
 // Target fraction of bought slots that should be offense, from view state.
 // `underThreat` comes from the score-source peek — see planBudgetAwareBuy.
 function computeOffenseShare(view: BotView, underThreat: boolean): number {
@@ -522,6 +558,13 @@ export function planBudgetAwareBuy(
   let slots = 0;
   let budget = view.ownBudget;
 
+  // Cards of cheap defence that would put our offence in the unanswerable
+  // tail of the place phase. Rounded down: overshooting parity buys nothing
+  // extra, the tail only has to start before our first ship goes down.
+  const parityTarget = Math.floor(
+    view.opponentCardCount * DEFENCE_PARITY_TARGET,
+  );
+
   // Buy the first affordable, under-cap pattern from a role's preference list.
   const tryBuy = (preference: number[]): boolean => {
     for (const idx of preference) {
@@ -541,14 +584,31 @@ export function planBudgetAwareBuy(
       (sum, idx) => sum + copiesOf(idx),
       0,
     );
+    const defenseSlots = slots - offenseSlots;
+
+    // Below the offence floor nothing else may spend: the win condition comes
+    // first, and parity protecting no offence protects nothing.
+    const needOffenceFloor = offenseSlots < OFFENCE_FLOOR_CARDS;
+
+    // Parity outranks the share arithmetic and the no-threat cap alike. The
+    // cap was written against blocks bought to *block* with nothing to block;
+    // these are bought for tempo, which does not depend on a threat existing.
+    const wantParity = !needOffenceFloor && defenseSlots < parityTarget;
+
     // Hard cap rather than trusting the share arithmetic: with nothing to
     // block, every defensive card past the first is a forced wasted placement.
     const defenseCapped =
-      !underThreat && slots - offenseSlots >= DEFENSE_CAP_WITHOUT_THREAT;
+      !wantParity &&
+      !underThreat &&
+      defenseSlots >= DEFENSE_CAP_WITHOUT_THREAT;
 
     const wantOffenseFirst =
-      defenseCapped ||
-      (slots === 0 ? offenseShare >= 0.5 : offenseSlots / slots < offenseShare);
+      needOffenceFloor ||
+      (!wantParity &&
+        (defenseCapped ||
+          (slots === 0
+            ? offenseShare >= 0.5
+            : offenseSlots / slots < offenseShare)));
     const primary = wantOffenseFirst ? OFFENSE_PREFERENCE : DEFENSE_PREFERENCE;
     const secondary = wantOffenseFirst ? DEFENSE_PREFERENCE : OFFENSE_PREFERENCE;
     // Fall back to the other role if the preferred one has nothing affordable,
