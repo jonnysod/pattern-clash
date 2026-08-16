@@ -15,14 +15,15 @@ import { getPatternForPlayer } from "./patternUtils.js";
 import { Engine } from "./engine.js";
 import { CONFIG } from "./config.js";
 
-// An opponent placement the bot has already witnessed this place phase.
+// A placement made during the current place phase — the opponent's (which
+// the bot has witnessed) or one of the bot's own.
 //
 // Fair by the game's own standard: a placement is public. The online
 // protocol puts patternIndex on the wire in the `placement` action (only
 // `buyConfirm` withholds it), so a remote human client learns exactly this,
 // at exactly this moment. What stays hidden is the *hand* — cards not yet
 // played — which is what the anti-sniffing model protects.
-export interface OpponentPlacement {
+export interface WitnessedPlacement {
   patternIndex: number;
   row: number;
   col: number;
@@ -40,7 +41,15 @@ export interface BotView {
   // order. Scoped to this phase on purpose: no simulation runs during a
   // place phase, so a piece is still exactly where it was put and the
   // trajectory projection below is exact.
-  opponentPlacements: OpponentPlacement[];
+  opponentPlacements: WitnessedPlacement[];
+  // The bot's own placements during the *current* place phase, in order.
+  //
+  // Needed because two spaceships launched too close together destroy each
+  // other's debris field when they land (see SHIP_MIN_ROW_SEPARATION), and
+  // the grid alone cannot answer "did I launch a ship on that row *this
+  // phase*" — old debris in our own zone looks the same. Cleared per phase
+  // alongside opponentPlacements.
+  ownPlacements: WitnessedPlacement[];
   // Rows where the opponent actually scored during the previous simulation
   // phase, heaviest first. This is the bot's threat signal for anything it
   // did not witness being placed — above all the stationary debris a crashed
@@ -167,6 +176,7 @@ export class RuleBasedBotPolicy {
     pattern: Pattern,
     grid: boolean[][],
     limit: number,
+    isRowAllowed?: (row: number) => boolean,
   ): { row: number; col: number }[] {
     const zones = this.game.zones;
     const midRow = this.game.rows / 2;
@@ -189,6 +199,7 @@ export class RuleBasedBotPolicy {
     const scored: { row: number; col: number; score: number }[] = [];
 
     for (let row = 0; row < this.game.rows; row++) {
+      if (isRowAllowed && !isRowAllowed(row)) continue;
       for (let col = 0; col < this.game.cols; col++) {
         if (!zones.isValidPatternPlacement(pattern, row, col, 2)) continue;
 
@@ -397,6 +408,41 @@ const THREAT_CANDIDATE_SHARE = 0.75;
 // the tier simply goes inert rather than forcing pieces to the edges.
 const SPREAD_MIN_ROWS = 10;
 
+// Rows of clearance one of our spaceships wants from another one we launched
+// this phase. Not a preference — below it the two are worth *less than one*.
+//
+// A spaceship that hits the far wall leaves a stationary oscillator that keeps
+// scoring, and that debris field reaches roughly ten rows either way. Two of
+// them overlapping annihilate each other. Measured on an otherwise empty board,
+// two MWSS launched in the same phase, scored over that phase alone:
+//
+//   row gap    8 →  92     16 → 466
+//             12 → 210     20 → 466   (466 = exactly 2 × a single ship)
+//
+// So the loss at gap 12 is 55%, at gap 8 it is 80% — worse than not buying the
+// second ship at all. The transition sits between 12 and 16; 16 is the first
+// gap measured at full value.
+const SHIP_MIN_ROW_SEPARATION = 16;
+
+// Small seeded PRNG (mulberry32) used to pick among placements the ranker
+// considers exactly equivalent.
+//
+// Seeded, per instance, and deterministic *by default* on purpose: the test
+// suite asserts on the bot's decisions, and a bare Math.random() in here would
+// make every one of those tests flaky. Production opts into real entropy by
+// passing `rng` (see main.ts); everything else replays the same stream.
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const DEFAULT_RNG_SEED = 0x5eed;
+
 // ---------------------------------------------------------------------------
 // Budget-aware buy planner (Stufe 4)
 // ---------------------------------------------------------------------------
@@ -521,15 +567,21 @@ export class SimRankingBotPolicy implements BotPolicy {
   private shortlistGenerator: RuleBasedBotPolicy;
   private horizonOverride: number | undefined;
   private shortlistSize: number;
+  private rng: () => number;
 
   constructor(
     game: Game,
-    options?: { horizon?: number; shortlistSize?: number },
+    options?: {
+      horizon?: number;
+      shortlistSize?: number;
+      rng?: () => number;
+    },
   ) {
     this.game = game;
     this.shortlistGenerator = new RuleBasedBotPolicy(game);
     this.horizonOverride = options?.horizon;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
+    this.rng = options?.rng ?? mulberry32(DEFAULT_RNG_SEED);
   }
 
   // Read per decision, not captured in the constructor: the policy is built
@@ -554,20 +606,34 @@ export class SimRankingBotPolicy implements BotPolicy {
   choosePlacement(
     view: BotView,
   ): { cardId: string; row: number; col: number } | null {
-    let best: {
-      cardId: string;
-      row: number;
-      col: number;
-      net: number;
-      overlapFree: number;
-      spread: number;
-      centrality: number;
-    } | null = null;
+    // Every placement that ties on the full ranking key. One is drawn at
+    // random at the end rather than taking whichever the loop saw first.
+    //
+    // The tiers below are thresholds and integer sums, so exact ties are the
+    // common case, not an edge case — and resolving them by iteration order
+    // made the bot needlessly predictable: the centrality tier always answers
+    // "the middle", so a hand with nothing to block landed in the same place
+    // every game. Measured on an empty board, a single MWSS scores identically
+    // (2129) launched from row 10, 20, 32, 44, 56, 68 or 80 — the choice among
+    // tied rows is worth nothing, which is exactly what makes it free to
+    // randomise. Nothing below the tie is randomised: the tiers themselves are
+    // never sampled past.
+    let bestKey: number[] | null = null;
+    let tied: { cardId: string; row: number; col: number }[] = [];
+
+    const compare = (a: number[], b: number[]): number => {
+      for (let i = 0; i < a.length; i++) {
+        if (a[i]! !== b[i]!) return a[i]! > b[i]! ? 1 : -1;
+      }
+      return 0;
+    };
 
     // Lexicographic ranking: (1) net score, (2) no footprint overlap,
     // (3) not clumped against what is already there, (4) central row. Net is
     // an integer point sum, so ties are exact and common on a sparse board
-    // (a block neither scores nor blocks → net 0).
+    // (a block neither scores nor blocks → net 0). Ship separation is not a
+    // tier here — it is enforced when the candidates are generated, because
+    // the offensive generator offers only one row to begin with.
     //
     // The overlap tier is load-bearing: without it, equal-net ties let a
     // defensive piece land on already-live cells — stacking on another
@@ -598,47 +664,63 @@ export class SimRankingBotPolicy implements BotPolicy {
     // placements that genuinely improve the net score.
     const midRow = this.game.rows / 2;
 
-    for (const card of view.ownHand) {
+    // Hold offence back for the tail of the place phase. While the opponent
+    // still holds cards, any spaceship we commit can be neutralised by a
+    // single cheap block dropped into its lane — a 4-cell answer to an
+    // 11-cell piece worth up to 233 points. Playing a defensive piece early
+    // risks only its own price, and that asymmetry sets the order: cheap
+    // first, expensive last. Ideally the opponent's hand is empty by the
+    // time the ships go down, and the placements are unanswerable.
+    //
+    // A hard filter rather than another ranking tier, because the net score
+    // cannot see this at all: the peek evaluates as if the board froze after
+    // our placement, so the opponent's answer never enters any number. Left
+    // to net alone the bot played its ships *first* — they rank highest.
+    //
+    // No "keep one blocker in reserve" carve-out. An offensive piece is a
+    // perfectly good interceptor (both sides travel towards each other and
+    // meet in the neutral zone), and the peek already prices that: a head-on
+    // kill lowers the opponent's score and rises in the ranking on its own.
+    // Roles decide the *order* here, never the value.
+    const isOffensive = (card: Card): boolean =>
+      OFFENSIVE_PATTERN_INDICES.has(card.patternIndex);
+    const holdOffence =
+      view.opponentCardCount > 0 && view.ownHand.some((c) => !isOffensive(c));
+    const playableHand = holdOffence
+      ? view.ownHand.filter((c) => !isOffensive(c))
+      : view.ownHand;
+
+    for (const card of playableHand) {
       const basePattern = PATTERNS[card.patternIndex];
       if (!basePattern) continue;
       const pattern = getPatternForPlayer(basePattern, 2);
 
       const candidates = this.generateShortlist(card, pattern, view);
       for (const { row, col } of candidates) {
-        const net = this.peekNetScore(view.grid, pattern, row, col);
-        const overlapFree = footprintOverlapsGrid(pattern, row, col, view.grid)
-          ? 0
-          : 1;
-        const spread = isClear(row) ? 1 : 0;
-        const centrality = -Math.abs(row - midRow); // higher = more central
-        if (
-          best === null ||
-          net > best.net ||
-          (net === best.net &&
-            (overlapFree > best.overlapFree ||
-              (overlapFree === best.overlapFree &&
-                (spread > best.spread ||
-                  (spread === best.spread && centrality > best.centrality)))))
-        ) {
-          best = {
-            cardId: card.id,
-            row,
-            col,
-            net,
-            overlapFree,
-            spread,
-            centrality,
-          };
+        const key = [
+          this.peekNetScore(view.grid, pattern, row, col),
+          footprintOverlapsGrid(pattern, row, col, view.grid) ? 0 : 1,
+          isClear(row) ? 1 : 0,
+          -Math.abs(row - midRow), // higher = more central
+        ];
+        const cmp = bestKey === null ? 1 : compare(key, bestKey);
+        if (cmp > 0) {
+          bestKey = key;
+          tied = [{ cardId: card.id, row, col }];
+        } else if (cmp === 0) {
+          tied.push({ cardId: card.id, row, col });
         }
       }
     }
 
-    if (best) return { cardId: best.cardId, row: best.row, col: best.col };
+    if (tied.length > 0) {
+      return tied[Math.floor(this.rng() * tied.length)] ?? tied[0]!;
+    }
 
     // Fallback: no legal candidate was found for any card (shouldn't
     // happen given zone geometry, but use-it-or-lose-it requires a
     // placement). Fall back to the first card's single best heuristic pick.
-    const fallbackCard = view.ownHand[0];
+    const fallbackCard = playableHand[0];
     if (!fallbackCard) return null;
     const fallbackPattern = PATTERNS[fallbackCard.patternIndex];
     if (!fallbackPattern) return null;
@@ -663,6 +745,28 @@ export class SimRankingBotPolicy implements BotPolicy {
     view: BotView,
   ): { row: number; col: number }[] {
     if (OFFENSIVE_PATTERN_INDICES.has(card.patternIndex)) {
+      // Keep a second ship away from the debris field the first one will
+      // leave (see SHIP_MIN_ROW_SEPARATION). This has to happen here rather
+      // than as a ranking tier: on a quiet board the offensive heuristic is
+      // dominated by its centrality term, so every one of the top candidates
+      // sits in the *same* row and differs only by column — a tier would have
+      // had nothing else to choose from, and both ships would stack.
+      const shipRows = view.ownPlacements
+        .filter((p) => OFFENSIVE_PATTERN_INDICES.has(p.patternIndex))
+        .map((p) => p.row);
+      const clear = (row: number): boolean =>
+        shipRows.every((r) => Math.abs(r - row) >= SHIP_MIN_ROW_SEPARATION);
+
+      const spaced = this.shortlistGenerator.rankPlacements(
+        pattern,
+        view.grid,
+        this.shortlistSize,
+        clear,
+      );
+      // Fall back to the unfiltered list rather than returning nothing:
+      // use-it-or-lose-it means the card is placed regardless, and a stacked
+      // ship still beats a random one from the generic fallback path.
+      if (spaced.length > 0) return spaced;
       return this.shortlistGenerator.rankPlacements(
         pattern,
         view.grid,

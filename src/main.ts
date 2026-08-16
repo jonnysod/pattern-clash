@@ -72,7 +72,9 @@ function startBotGame(): void {
   renderer.drawGrid();
 
   const syncManager = new LocalSyncManager();
-  const policy = new SimRankingBotPolicy(game);
+  // Real entropy only here: the policy defaults to a fixed seed so the test
+  // suite stays deterministic (see mulberry32 in botPolicy.ts).
+  const policy = new SimRankingBotPolicy(game, { rng: Math.random });
   const botController = new BotController(game, syncManager, policy);
 
   uiController = new UIController(

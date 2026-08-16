@@ -337,7 +337,7 @@ export class UIController {
     this.hoverRow = null;
     // Last phase's placements have since been simulated — they are no longer
     // where they were put, so projecting them would aim at ghosts.
-    this.botController?.clearOpponentPlacements();
+    this.botController?.clearPlacements();
     logInfo(
       `[Game] Place phase ${this.game.currentPhaseNumber} started. ` +
         `Player ${this.activePlacer} goes first.`,
@@ -778,7 +778,7 @@ export class UIController {
         }
         // Let the bot witness the placement before its next turn begins —
         // beginTurn() below can schedule that turn immediately.
-        this.botController?.recordOpponentPlacement(
+        this.botController?.recordPlacement(
           action.player,
           action.patternIndex,
           action.row,

@@ -15,7 +15,7 @@ import type {
   BotPolicy,
   BotView,
   MovingThreat,
-  OpponentPlacement,
+  WitnessedPlacement,
 } from "./botPolicy.js";
 
 const BOT_PLACEMENT_DELAY_MS = 600;
@@ -97,7 +97,10 @@ export class BotController {
   // and the pattern's identity is exactly what the trajectory projection
   // needs. The action already carries patternIndex, and the online protocol
   // publishes it at this same moment, so no new information is exposed.
-  private opponentPlacements: OpponentPlacement[] = [];
+  private opponentPlacements: WitnessedPlacement[] = [];
+
+  // Our own placements this place phase, same scoping and same source.
+  private ownPlacements: WitnessedPlacement[] = [];
 
   // Points the opponent scored per row during the simulation phase, fed by
   // UIController as the real simulation emits them. Cleared when a new
@@ -161,26 +164,31 @@ export class BotController {
     }
   }
 
-  // Record a placement the opponent just made, so the policy can project its
-  // trajectory. Ignores the bot's own placements — those are not threats.
-  recordOpponentPlacement(
+  // Record a placement either player just made. The opponent's feed the
+  // trajectory projection (what is coming for us); our own feed the ship
+  // separation rule (where we already launched this phase).
+  recordPlacement(
     player: 1 | 2,
     patternIndex: number,
     row: number,
     col: number,
   ): void {
-    if (player !== 1) return;
     // A placeholder (-1) is an unresolved remote card; a real placement
-    // always carries its index. Nothing to project without one.
+    // always carries its index. Nothing to reason about without one.
     if (patternIndex < 0) return;
-    this.opponentPlacements.push({ patternIndex, row, col });
+    const target =
+      player === 1 ? this.opponentPlacements : this.ownPlacements;
+    target.push({ patternIndex, row, col });
   }
 
   // Called when a new place phase begins. Trajectories are only exact for
   // pieces that have not moved yet, and a simulation runs between phases —
-  // so last phase's placements are stale and must not be projected.
-  clearOpponentPlacements(): void {
+  // so last phase's placements are stale and must not be projected. Our own
+  // are scoped to the phase for the same reason: the debris field a ship
+  // leaves belongs to the phase it landed in.
+  clearPlacements(): void {
     this.opponentPlacements = [];
+    this.ownPlacements = [];
   }
 
   // Called when a simulation phase starts, before the first tick.
@@ -298,6 +306,7 @@ export class BotController {
       ownScore: this.game.scorePlayer2,
       opponentScore: this.game.scorePlayer1,
       opponentPlacements: this.opponentPlacements,
+      ownPlacements: this.ownPlacements,
       observedScoreRows: [...this.observedPointsByRow.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([row]) => row),
