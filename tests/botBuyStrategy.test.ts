@@ -107,3 +107,64 @@ describe("planBudgetAwareBuy — state-aware tilt", () => {
     expect(offenseFraction(b)).toBeGreaterThanOrEqual(0.8);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Card-count parity
+// ---------------------------------------------------------------------------
+//
+// The place phase alternates, so whoever still holds cards when the other runs
+// out plays the remainder unanswered. Buying cheap defence towards the
+// opponent's card count lengthens that tail, which is what makes holding
+// offence back (see choosePlacement) pay off.
+
+const countCards = (b: ReturnType<typeof planBudgetAwareBuy>): number =>
+  b.reduce((s, x) => s + x.count, 0);
+const countOffence = (b: ReturnType<typeof planBudgetAwareBuy>): number =>
+  b.filter((x) => OFFENSE.has(x.patternIndex)).reduce((s, x) => s + x.count, 0);
+
+describe("planBudgetAwareBuy — card-count parity", () => {
+  it("buys extra cheap cards to lengthen the tail", () => {
+    // Five opponent cards, one phase's budget. The share arithmetic alone
+    // spends this on two spaceships and one block (3 cards); parity turns the
+    // same budget into four, without giving up either spaceship.
+    const bundles = planBudgetAwareBuy(
+      view({ ownBudget: 26, opponentCardCount: 5 }),
+    );
+
+    expect(countCards(bundles)).toBeGreaterThanOrEqual(4);
+    expect(countOffence(bundles)).toBe(2);
+  });
+
+  it("never trades away the last spaceship for parity", () => {
+    // 18 points against a ten-card hand: four cheap cards cost 15 and would
+    // leave nothing that can fly. The reserve has to win over parity here.
+    const bundles = planBudgetAwareBuy(
+      view({ ownBudget: 18, opponentCardCount: 10 }),
+    );
+    expect(countOffence(bundles)).toBeGreaterThanOrEqual(1);
+  });
+
+  it("leaves a small opponent hand alone", () => {
+    // floor(2 × 0.4) = 0, so the rule must not fire at all here — the share
+    // arithmetic keeps deciding, exactly as before.
+    const bundles = planBudgetAwareBuy(
+      view({ ownBudget: 26, opponentCardCount: 2 }),
+    );
+    expect(countOffence(bundles)).toBe(2);
+  });
+
+  it("keeps every buy legal while chasing parity", () => {
+    const bundles = planBudgetAwareBuy(
+      view({ ownBudget: 26, opponentCardCount: 10 }),
+    );
+    const spent = bundles.reduce(
+      (s, b) => s + PATTERNS[b.patternIndex]!.cells.length * b.count,
+      0,
+    );
+    expect(spent).toBeLessThanOrEqual(26);
+    expect(countCards(bundles)).toBeLessThanOrEqual(CONFIG.MAX_SLOTS);
+    for (const b of bundles) {
+      expect(b.count).toBeLessThanOrEqual(CONFIG.MAX_COPIES_PER_TYPE);
+    }
+  });
+});
