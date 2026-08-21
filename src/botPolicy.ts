@@ -343,12 +343,33 @@ const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
 // noticeable (do NOT lower the horizon to compensate: that re-blinds the
 // spaceship ranking this default exists to fix).
 const SHORTLIST_SIZE = 6;
-// Left at 16 deliberately. Widening to 24 was tried when score-source detection
-// arrived, on the theory that two threat signals and several simultaneous
-// threats need more room. Measured: it changed no decision in any scenario —
-// the debris answer and all multi-threat answers were identical — and cost 27%
-// more time per decision (4.5 s vs 3.3 s for a 7-card hand at horizon 250).
-// Aiming the candidates well is what mattered, not offering more of them.
+// Swept in both directions and left at 16 both times.
+//
+// Upwards: widening to 24 was tried when score-source detection arrived, on
+// the theory that two threat signals and several simultaneous threats need
+// more room. It changed no decision in any scenario and cost 27% more time
+// per decision (4.5 s vs 3.3 s for a 7-card hand at horizon 250). Aiming the
+// candidates well is what mattered, not offering more of them.
+//
+// Downwards: the full suite locates a cliff between 10 and 12 —
+//
+//   size    8   10   12   14   16
+//   suite   ✗    ✗    ✓    ✓    ✓
+//
+// At 10 and below two tests break: the bot stops answering an unannounced
+// glider at all (defensive recall), and net-neutral pieces collapse from
+// three distinct rows into two (spread). The list is then too short to hold
+// both the threat-aimed candidates and the scatter behind them.
+//
+// 12 passes everything and costs ~20% less, and was still rejected: a probe
+// over five scenarios could not tell 12 and 16 apart on *outcome* — points
+// the opponent still scored after the answer were identical (63 of 402 for
+// one debris source, 867 of 1206 for three) across every size from 8 to 24,
+// including the sizes that fail the suite. So the only discriminator the
+// project has is those two tests, which makes 12 a value one step above a
+// cliff with unknown clearance. The 20% also does not solve what it would be
+// bought for: 4.5 s of synchronous freeze becoming 3.6 s is still a freeze,
+// and the fix for that is moving the peek off the main thread.
 const DEFENSIVE_SHORTLIST_SIZE = 16;
 
 // ---------------------------------------------------------------------------
