@@ -102,6 +102,16 @@ export class BotController {
   // Our own placements this place phase, same scoping and same source.
   private ownPlacements: WitnessedPlacement[] = [];
 
+  // The opponent's budget as it stood when this buy phase opened, before they
+  // spent anything. Together with their budget at the bot's own buy time it
+  // gives what they spent, which bounds how much of what they bought can fly.
+  //
+  // Snapshotted rather than reconstructed from BUDGET_PER_PHASE so it stays
+  // correct if the award rule ever changes. null means no snapshot was taken
+  // for this phase — the bot then assumes the worst rather than claiming
+  // safety it has not observed.
+  private opponentBudgetAtBuyStart: number | null = null;
+
   // Points the opponent scored per row during the simulation phase, fed by
   // UIController as the real simulation emits them. Cleared when a new
   // simulation starts, so during the following buy and place phases this
@@ -189,6 +199,13 @@ export class BotController {
   clearPlacements(): void {
     this.opponentPlacements = [];
     this.ownPlacements = [];
+  }
+
+  // Called when a buy phase opens, after the phase's budget has been awarded
+  // and before anyone has bought. Fixes the reference point for the spend the
+  // bot reads back at its own buy time.
+  beginBuyPhase(): void {
+    this.opponentBudgetAtBuyStart = this.game.getBudget(1);
   }
 
   // Called when a simulation phase starts, before the first tick.
@@ -307,6 +324,11 @@ export class BotController {
       opponentScore: this.game.scorePlayer1,
       opponentPlacements: this.opponentPlacements,
       ownPlacements: this.ownPlacements,
+      opponentBudget: this.game.getBudget(1),
+      opponentSpentThisPhase:
+        this.opponentBudgetAtBuyStart === null
+          ? null
+          : this.opponentBudgetAtBuyStart - this.game.getBudget(1),
       observedScoreRows: [...this.observedPointsByRow.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([row]) => row),

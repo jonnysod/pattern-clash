@@ -35,6 +35,22 @@ export interface BotView {
   ownBudget: number;
   ownHand: Card[];
   opponentCardCount: number; // count only — contents are never exposed
+  // The opponent's remaining budget, and what they spent in this buy phase.
+  //
+  // Both are public by the game's own standard: each player's budget is on
+  // screen for the whole match, and `remainingBudget` rides in the buyConfirm
+  // action precisely so the other client can display it. Withholding them from
+  // the bot did not protect anything — it just left it blind to two numbers a
+  // human reads off the status bar.
+  //
+  // What they buy is the bound in maxIncomingShips(): the count says how many
+  // cards, the spend says how expensive they were, and cheap cards cannot fly.
+  // The hand itself stays hidden, so the anti-sniffing model is untouched.
+  //
+  // opponentSpentThisPhase is null when no reference point was taken for this
+  // phase; callers must treat that as "unknown", never as "nothing".
+  opponentBudget: number;
+  opponentSpentThisPhase: number | null;
   ownScore: number;
   opponentScore: number;
   // Placements made by the opponent during the *current* place phase, in
@@ -392,6 +408,52 @@ const DEFENSIVE_SHORTLIST_SIZE = 16;
 // generations" is not the same as harmless, because the board carries over
 // and a slow glider simply lands next phase. Only leaving the grid is a real
 // all-clear.
+// Upper bound on how many pieces in the opponent's freshly bought hand could
+// possibly reach us, from the two public numbers: card count and total spend.
+//
+// Every card costs at least the cheapest pattern in the game, and anything
+// that can actually travel the board costs at least the cheapest of *those*.
+// So for k travellers among c cards costing s in total:
+//
+//     cheapTravel*k + cheapAny*(c-k) <= s   =>   k <= (s - cheapAny*c) / delta
+//
+// With today's prices (Blinker 3, LWSS 9) that is k <= (s - 3c) / 6. Five
+// cards for 15 points proves *zero* travellers; three cards for 33 allows
+// three. The zero case is the valuable one — it is a certainty, not a guess,
+// and it says defence bought this phase would have nothing to catch.
+//
+// Diagonal patterns are excluded from "can travel": a glider moves at c/4 and
+// does not cross the board inside a phase (see the movement notes above), so
+// counting it would only make the bound needlessly pessimistic. Being wrong
+// in that direction is safe — the bound overstates the threat, never hides it.
+//
+// Prices are read from PATTERNS rather than written down, so the bound cannot
+// drift when a pattern is added or repriced.
+function maxIncomingShips(view: BotView): number {
+  const spent = view.opponentSpentThisPhase;
+  const cards = view.opponentCardCount;
+  // No reference point, or nothing bought: assume the worst rather than
+  // claiming a safety that was never observed.
+  if (spent === null) return cards;
+  if (cards <= 0) return 0;
+
+  let cheapAny = Infinity;
+  let cheapTravel = Infinity;
+  for (const pattern of PATTERNS) {
+    const price = pattern.cells.length;
+    if (price < cheapAny) cheapAny = price;
+    const kind = pattern.movement.kind;
+    if (kind === "orthogonal" || kind === "emitter") {
+      if (price < cheapTravel) cheapTravel = price;
+    }
+  }
+
+  const delta = cheapTravel - cheapAny;
+  if (delta <= 0) return cards; // no price separation to reason from
+  const bound = Math.floor((spent - cheapAny * cards) / delta);
+  return Math.max(0, Math.min(cards, bound));
+}
+
 const THREAT_WEIGHT: Record<string, number> = {
   static: 0, // still lifes and oscillators never travel — ignore
   orthogonal: 1,
@@ -678,9 +740,16 @@ export class SimRankingBotPolicy implements BotPolicy {
     // Without this the bot bought its defensive share every phase regardless,
     // and use-it-or-lose-it then forced those blocks onto the board somewhere
     // — which is what the clump of blocks in the middle of an empty board was.
+    // Three signals, and they cover different times. The first two are
+    // observations of the phase just watched — debris that scored, and things
+    // seen in flight. The third is about the phase about to be played: what
+    // the opponent just bought and has not placed yet, which nothing observed
+    // can see. Without it a clean board plus a hand full of freshly bought
+    // spaceships read as "no threat", and the bot bought almost no defence.
     const underThreat =
       view.observedScoreRows.length > 0 ||
-      view.observedMotion.some((m) => m.colsPerGen > 0);
+      view.observedMotion.some((m) => m.colsPerGen > 0) ||
+      maxIncomingShips(view) > 0;
     return planBudgetAwareBuy(view, underThreat);
   }
 

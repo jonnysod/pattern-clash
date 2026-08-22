@@ -224,6 +224,10 @@ export class UIController {
       this.pendingBuyers = [this.localPlayer];
     }
 
+    // After the award, before anyone buys: this is the reference point the
+    // bot measures the opponent's spend against.
+    this.botController?.beginBuyPhase();
+
     // simGenerations ramps per phase, so the status bar's max has to be
     // refreshed here — initialRender() only ever sees the phase-1 value.
     this.dom.maxGenerations.textContent = String(this.game.simGenerations);
