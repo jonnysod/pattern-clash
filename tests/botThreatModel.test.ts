@@ -37,6 +37,8 @@ function makeView(
     opponentScore: game.scorePlayer1,
     opponentPlacements,
     ownPlacements: [],
+    opponentBudget: 0,
+    opponentSpentThisPhase: null,
     observedScoreRows,
     observedMotion: [],
   };
@@ -507,6 +509,8 @@ describe("BotController — observed motion", () => {
       ownHand: [{ id: "d1", patternIndex: BLOCK_INDEX }],
       opponentPlacements: [],
       ownPlacements: [],
+      opponentBudget: 0,
+      opponentSpentThisPhase: null,
     })!;
     expect(result).not.toBeNull();
 
@@ -531,9 +535,16 @@ function defensiveCards(bundles: { patternIndex: number; count: number }[]) {
 }
 
 describe("SimRankingBotPolicy — buy gating", () => {
+  // Three cards for nine points: at the cheapest price in the game that is
+  // three Blinkers, so the spend proves the incoming hand cannot fly. Stated
+  // explicitly because "nothing threatens me" is a claim about all three
+  // signals, and leaving the spend unknown makes the bot assume the worst.
+  const HARMLESS_SPEND = 9;
+
   function buyView(
     game: ReturnType<typeof makeGame>,
     observedScoreRows: number[],
+    opponentSpentThisPhase: number | null = HARMLESS_SPEND,
   ): BotView {
     return {
       grid: game.grid,
@@ -545,10 +556,30 @@ describe("SimRankingBotPolicy — buy gating", () => {
       opponentScore: 0,
       opponentPlacements: [],
       ownPlacements: [],
+      opponentBudget: 0,
+      opponentSpentThisPhase,
       observedScoreRows,
       observedMotion: [],
     };
   }
+
+  it("buys defence against a hand whose price says it can fly", () => {
+    // Same clean board, same card count — only the spend differs. Three cards
+    // for 33 is affordable only as three MWSS, so this must not gate down.
+    const game = makeGame();
+    const policy = new SimRankingBotPolicy(game, { horizon: 60 });
+    expect(
+      defensiveCards(policy.chooseBuy(buyView(game, [], 33))),
+    ).toBeGreaterThan(1);
+  });
+
+  it("treats an unknown spend as dangerous, not as safe", () => {
+    const game = makeGame();
+    const policy = new SimRankingBotPolicy(game, { horizon: 60 });
+    expect(
+      defensiveCards(policy.chooseBuy(buyView(game, [], null))),
+    ).toBeGreaterThan(1);
+  });
 
   it("barely buys defence when nothing scored against it last phase", () => {
     const game = makeGame();
@@ -712,5 +743,72 @@ describe("BotController — observed score rows", () => {
     controller["executePlacement"]();
 
     expect(seen[0]!.observedScoreRows).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spend bound — the third threat signal
+// ---------------------------------------------------------------------------
+//
+// The opponent's card count and their spend are both public (each player's
+// budget is on screen all match, and remainingBudget rides in buyConfirm so
+// the other client can display it). Together they bound how many of the cards
+// just bought could possibly travel, without revealing which cards they are.
+
+describe("BotController — opponent spend observation", () => {
+  function makeController(): {
+    controller: BotController;
+    game: ReturnType<typeof makeGame>;
+    seen: BotView[];
+  } {
+    const game = makeGame();
+    const seen: BotView[] = [];
+    const policy = {
+      chooseBuy: (view: BotView) => {
+        seen.push(view);
+        return [];
+      },
+      choosePlacement: () => null,
+    };
+    const controller = new BotController(game, new LocalSyncManager(), policy);
+    return { controller, game, seen };
+  }
+
+  it("reports the spend measured from the phase's opening budget", () => {
+    const { controller, game, seen } = makeController();
+    const before = game.getBudget(1);
+
+    controller.beginBuyPhase();
+    game.buyPattern(1, MWSS_INDEX);
+    game.buyPattern(1, MWSS_INDEX);
+    controller.executeBuy();
+
+    const spent = 2 * PATTERNS[MWSS_INDEX]!.cells.length;
+    expect(seen[0]!.opponentSpentThisPhase).toBe(spent);
+    expect(seen[0]!.opponentBudget).toBe(before - spent);
+  });
+
+  it("reports null when no opening budget was taken for the phase", () => {
+    const { controller, seen } = makeController();
+    controller.executeBuy();
+    expect(seen[0]!.opponentSpentThisPhase).toBeNull();
+  });
+
+  it("re-bases on every buy phase rather than accumulating", () => {
+    const { controller, game, seen } = makeController();
+
+    controller.beginBuyPhase();
+    game.buyPattern(1, MWSS_INDEX);
+    controller.executeBuy();
+
+    // A second phase: the reference point moves, so the previous phase's
+    // spend must not leak into this one.
+    controller.beginBuyPhase();
+    game.buyPattern(1, BLOCK_INDEX);
+    controller.executeBuy();
+
+    expect(seen[1]!.opponentSpentThisPhase).toBe(
+      PATTERNS[BLOCK_INDEX]!.cells.length,
+    );
   });
 });

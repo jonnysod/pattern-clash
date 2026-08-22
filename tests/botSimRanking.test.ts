@@ -22,6 +22,8 @@ function makeView(game: ReturnType<typeof makeGame>, ownHand: BotView["ownHand"]
     opponentScore: game.scorePlayer1,
     opponentPlacements: [],
     ownPlacements: [],
+    opponentBudget: 0,
+    opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
   };
@@ -344,6 +346,8 @@ describe("SimRankingBotPolicy — regression full game", () => {
             opponentScore: game.scorePlayer1,
             opponentPlacements: [],
             ownPlacements: [],
+            opponentBudget: 0,
+            opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
           };

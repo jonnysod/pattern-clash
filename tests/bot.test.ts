@@ -42,6 +42,8 @@ describe("BotView — fairness", () => {
       opponentScore: game.scorePlayer1,
       opponentPlacements: [],
       ownPlacements: [],
+      opponentBudget: 0,
+      opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
     };
@@ -88,6 +90,8 @@ describe("DummyBotPolicy — chooseBuy", () => {
       opponentScore: 0,
       opponentPlacements: [],
       ownPlacements: [],
+      opponentBudget: 0,
+      opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
     };
@@ -136,6 +140,8 @@ describe("DummyBotPolicy — choosePlacement", () => {
         opponentScore: 0,
         opponentPlacements: [],
         ownPlacements: [],
+        opponentBudget: 0,
+        opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
       };
@@ -246,6 +252,8 @@ describe("Bot — headless full game", () => {
         opponentScore: 0,
         opponentPlacements: [],
         ownPlacements: [],
+        opponentBudget: 0,
+        opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
       });
@@ -301,6 +309,8 @@ describe("Bot — headless full game", () => {
               opponentScore: game.scorePlayer1,
               opponentPlacements: [],
               ownPlacements: [],
+              opponentBudget: 0,
+              opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
             },

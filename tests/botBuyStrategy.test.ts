@@ -21,6 +21,8 @@ function view(overrides: Partial<BotView> = {}): BotView {
     opponentScore: 0,
     opponentPlacements: [],
     ownPlacements: [],
+    opponentBudget: 0,
+    opponentSpentThisPhase: null,
     observedScoreRows: [],
     observedMotion: [],
     ...overrides,
