@@ -557,6 +557,31 @@ function clampShare(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
 
+// Point lead at which the bot stops racing and starts protecting, drawn once
+// per game (see SimRankingBotPolicy). Infinity means never — it plays the same
+// whether it is winning or losing, which is roughly the old behaviour.
+//
+// Calibrated against real games rather than the single-piece measurements in
+// this file: serious matches end between 100 and 400 points, rarely 800. So 50
+// is an eighth to a half of a final score, and 200 is a commanding lead.
+//
+// Randomised because it is the axis a human notices most — "it went turtle on
+// me" reads as a personality, not as a weaker opponent — and because the
+// threshold is a genuine strategic choice rather than a solved value.
+export const LEAD_DEFENCE_THRESHOLDS = [50, 100, 150, 200, Infinity];
+
+// Offense share once the lead is being protected. Below the 0.3 floor the
+// normal tilt is clamped to, so protecting returns early rather than being
+// clamped back up into ordinary play.
+//
+// Defence is worth this much because it is the more point-efficient role once
+// a target exists: measured over a phase, a 4-point block on a debris source
+// took the opponent from 402 to 63 (~85 points saved per budget point), while
+// an unanswered 11-point MWSS scores 233 (~21 per budget point). Ahead, that
+// asymmetry counts twice — points denied widen the gap exactly as points
+// scored do.
+const LEAD_DEFENCE_SHARE = 0.2;
+
 // Cap on the *number* of defensive cards when nothing on the board is scoring
 // against us. Not zero: one absorber is cheap insurance against a threat placed
 // later in the same phase, which no peek of the current board can see yet.
@@ -599,17 +624,44 @@ const DEFENCE_PARITY_TARGET = 0.4;
 const OFFENCE_FLOOR_CARDS = 1;
 
 // Target fraction of bought slots that should be offense, from view state.
-// `underThreat` comes from the score-source peek — see planBudgetAwareBuy.
-function computeOffenseShare(view: BotView, underThreat: boolean): number {
+// `underThreat` comes from the threat signals — see planBudgetAwareBuy.
+function computeOffenseShare(
+  view: BotView,
+  underThreat: boolean,
+  leadDefenceThreshold: number,
+): number {
   const scoreDiff = view.ownScore - view.opponentScore; // + = ahead
 
   let share = BASE_OFFENSE_SHARE;
   // Nothing is scoring against us: defensive cards have nothing to block, and
   // use-it-or-lose-it would force them onto the board anyway. Buy offense.
   if (!underThreat) return 0.85;
-  // Ahead → tilt defensive (protect the lead); behind → tilt offensive
-  // (catch up). Saturates around a ±4 point gap.
-  share -= clampShare(scoreDiff / 20, -0.2, 0.2);
+
+  // Protecting a lead. Deliberately below the threat check, so the two are
+  // conjunctive: a comfortable lead is no reason to buy blocks that have
+  // nothing to block, since use-it-or-lose-it forces them onto our own board
+  // anyway.
+  //
+  // That conjunction happens to be held twice over — the early return above
+  // means this line is never reached without a threat, and even if it were,
+  // DEFENSE_CAP_WITHOUT_THREAT caps defensive cards at one further down. Both
+  // guards predate this dial and are independently motivated, so neither was
+  // removed; it is worth knowing that no single test can distinguish them.
+  //
+  // Returns early to bypass the 0.3 floor below, which exists to stop the
+  // ordinary tilt from abandoning offence; here abandoning it is the point.
+  if (scoreDiff >= leadDefenceThreshold) return LEAD_DEFENCE_SHARE;
+
+  // Behind → tilt offensive to catch up.
+  //
+  // Only the behind half is a gradient now. This used to be two-sided as
+  // `scoreDiff / 20`, which saturated at a four-point gap — two orders of
+  // magnitude below real scores (100-400 a game), so it was permanently
+  // pinned and acted as a constant flag rather than a slope. The ahead half
+  // is now the explicit threshold above; this half is rescaled to saturate
+  // around a hundred-point deficit, which is a real one.
+  if (scoreDiff < 0) share += clampShare(-scoreDiff / 500, 0, 0.2);
+
   // More opponent cards on the board → more incoming threats → more defense.
   share -= clampShare((view.opponentCardCount - 4) / 40, 0, 0.1);
 
@@ -628,13 +680,21 @@ function computeOffenseShare(view: BotView, underThreat: boolean): number {
 // `underThreat` defaults to true so the Dummy/RuleBased policies and existing
 // callers keep the previous, threat-agnostic behaviour; only SimRankingBotPolicy
 // has a peek to base the answer on.
+// `leadDefenceThreshold` defaults to Infinity — never protect — so the
+// Dummy/RuleBased policies and direct callers keep racing regardless of score,
+// which is what they did before the dial existed.
 export function planBudgetAwareBuy(
   view: BotView,
   underThreat: boolean = true,
+  leadDefenceThreshold: number = Infinity,
 ): BuyBundle[] {
   const priceOf = (idx: number): number =>
     PATTERNS[idx]?.cells.length ?? Infinity;
-  const offenseShare = computeOffenseShare(view, underThreat);
+  const offenseShare = computeOffenseShare(
+    view,
+    underThreat,
+    leadDefenceThreshold,
+  );
 
   const counts = new Map<number, number>();
   const copiesOf = (idx: number): number => counts.get(idx) ?? 0;
@@ -712,12 +772,17 @@ export class SimRankingBotPolicy implements BotPolicy {
   private shortlistSize: number;
   private rng: () => number;
 
+  // Drawn once per game and then fixed: a persona is only a personality if it
+  // is coherent for a whole match. Redrawing per phase would read as noise.
+  readonly leadDefenceThreshold: number;
+
   constructor(
     game: Game,
     options?: {
       horizon?: number;
       shortlistSize?: number;
       rng?: () => number;
+      leadDefenceThreshold?: number;
     },
   ) {
     this.game = game;
@@ -725,6 +790,12 @@ export class SimRankingBotPolicy implements BotPolicy {
     this.horizonOverride = options?.horizon;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
     this.rng = options?.rng ?? mulberry32(DEFAULT_RNG_SEED);
+    this.leadDefenceThreshold =
+      options?.leadDefenceThreshold ??
+      LEAD_DEFENCE_THRESHOLDS[
+        Math.floor(this.rng() * LEAD_DEFENCE_THRESHOLDS.length)
+      ] ??
+      Infinity;
   }
 
   // Read per decision, not captured in the constructor: the policy is built
@@ -750,7 +821,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       view.observedScoreRows.length > 0 ||
       view.observedMotion.some((m) => m.colsPerGen > 0) ||
       maxIncomingShips(view) > 0;
-    return planBudgetAwareBuy(view, underThreat);
+    return planBudgetAwareBuy(view, underThreat, this.leadDefenceThreshold);
   }
 
   choosePlacement(
