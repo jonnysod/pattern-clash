@@ -545,13 +545,73 @@ const DEFAULT_RNG_SEED = 0x5eed;
 const OFFENSE_PREFERENCE = [1, 0, 8]; // MWSS, LWSS, Glider down
 const DEFENSE_PREFERENCE = [2, 5, 4]; // Block, Blinker, Boat
 
-// Of MAX_SLOTS (10): enough board pressure without flooding the own zone with
-// forced use-it-or-lose-it placements (which also raises self-score risk).
-const BUY_SLOT_CAP = 7;
+// A buying temperament, drawn once per game alongside the lead threshold.
+//
+// Only dials that are genuinely a matter of taste belong here. The rest of
+// the bot's numbers were measured and have a right answer — ship separation,
+// the offence-hold gate, the shortlist size, the peek horizon — and varying
+// those would not produce a personality, only a worse opponent.
+//
+// The three differ in how they convert budget into board presence: the
+// aggressor buys few expensive pieces and ignores card count, the defender
+// buys many cheap ones and chases it, the balanced one is what the measured
+// defaults arrived at.
+export interface BuyProfile {
+  readonly name: string;
+  // Target fraction of bought slots that should be offensive.
+  readonly offenceShare: number;
+  // How hard to chase card-count parity, as a fraction of the opponent's hand:
+  // 0 disables the rule, 1 aims to match them card for card.
+  //
+  // Why parity is worth budget at all: the place phase alternates, so whoever
+  // still holds cards when the other runs out plays the remainder unanswered.
+  // Combined with holding offence back (see choosePlacement), every defensive
+  // card bought past the opponent's count converts one of our spaceships from
+  // "answerable by a 4-cell block" into "unanswerable".
+  //
+  // Why nobody gets 1: full parity is not affordable. From phase 2 the budget,
+  // not the slot cap, is binding — 25 points buys either two MWSS and one
+  // block, or one MWSS and four cheap cards. Swept against a five-card
+  // opponent, cards bought in phases 3-6 and offence surviving:
+  //
+  //   0.0 / 0.3 -> 3 cards, 2 spaceships   (target <= 1, rule never fires)
+  //   0.4       -> 4-5 cards, 2 spaceships
+  //   0.6 / 0.8 -> 4-5 cards, 1 spaceship
+  //   1.0       -> 5-7 cards, 1 spaceship
+  //
+  // 0.4 is where the tempo is still free; the step to 0.6 costs a whole MWSS
+  // and buys no extra cards. The defender pays that price knowingly — trading
+  // a spaceship for tempo is exactly what makes it a different opponent rather
+  // than a differently-tuned one.
+  readonly parityTarget: number;
+  // Of MAX_SLOTS (10): the cap on cards bought in one phase. Lower means less
+  // board presence but also fewer forced use-it-or-lose-it placements, which
+  // are what clutter our own zone and raise self-score risk.
+  readonly slotCap: number;
+}
 
-// Offense is the win condition (the horizon fix makes travelling spaceships
-// the strongest moves), so the neutral split leans offensive.
-const BASE_OFFENSE_SHARE = 0.6;
+export const BUY_PROFILES: readonly BuyProfile[] = [
+  { name: "aggressor", offenceShare: 0.8, parityTarget: 0, slotCap: 5 },
+  { name: "balanced", offenceShare: 0.6, parityTarget: 0.4, slotCap: 7 },
+  { name: "defender", offenceShare: 0.4, parityTarget: 0.7, slotCap: 8 },
+];
+
+// The measured defaults, and what direct callers get when they pass nothing.
+export const BALANCED_PROFILE = BUY_PROFILES[1]!;
+
+// Persona = the two independent draws. Kept separate rather than folding the
+// threshold into a profile because they are orthogonal: "how do I buy" and
+// "what do I do when winning" are different questions, and pinning them
+// together would cut the variety a player actually notices.
+export interface BuyPersona {
+  readonly profile: BuyProfile;
+  readonly leadDefenceThreshold: number;
+}
+
+export const DEFAULT_PERSONA: BuyPersona = {
+  profile: BALANCED_PROFILE,
+  leadDefenceThreshold: Infinity,
+};
 
 function clampShare(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
@@ -587,35 +647,6 @@ const LEAD_DEFENCE_SHARE = 0.2;
 // later in the same phase, which no peek of the current board can see yet.
 const DEFENSE_CAP_WITHOUT_THREAT = 1;
 
-// How hard to chase card-count parity with the opponent, as a fraction of
-// their hand: 0 disables the rule entirely, 1 aims to match them card for card.
-//
-// Why parity is worth budget at all: the place phase alternates, so whoever
-// still holds cards when the other runs out plays the remainder unanswered.
-// Combined with holding offence back (see choosePlacement), every defensive
-// card bought past the opponent's count converts one of our spaceships from
-// "answerable by a 4-cell block" into "unanswerable". The condition for *all*
-// our offence to land in that tail is defence >= their card count.
-//
-// Why not 1: full parity is not affordable. From phase 2 the budget, not the
-// slot cap, is the binding constraint — 25 points buys either two MWSS and one
-// block, or one MWSS and four cheap cards. Chasing parity against a five-card
-// hand would cost the entire offence, and offence is the win condition.
-//
-// 0.4 is where the tempo is still free. Swept against a five-card opponent,
-// cards bought in phases 3–6 and how much offence survives:
-//
-//   0.0 / 0.3 → 3 cards, 2 spaceships   (target ≤ 1, rule never fires)
-//   0.4       → 4–5 cards, 2 spaceships
-//   0.6 / 0.8 → 4–5 cards, 1 spaceship
-//   1.0       → 5–7 cards, 1 spaceship
-//
-// The step from 0.4 to 0.6 costs an entire MWSS and buys no extra cards, so
-// everything above 0.4 pays for tempo with the win condition. Whether that is
-// ever worth it depends on how reliably a human blocks a spaceship they can
-// see — which no simulation here can answer, since it is the whole reason the
-// trade exists. Hence a playtest dial, defaulted to the free end of it.
-const DEFENCE_PARITY_TARGET = 0.4;
 
 // Never trade away the last spaceship, whatever parity would like. Enforced by
 // ordering rather than by reserving budget: below the floor the offensive buy
@@ -628,11 +659,11 @@ const OFFENCE_FLOOR_CARDS = 1;
 function computeOffenseShare(
   view: BotView,
   underThreat: boolean,
-  leadDefenceThreshold: number,
+  persona: BuyPersona,
 ): number {
   const scoreDiff = view.ownScore - view.opponentScore; // + = ahead
 
-  let share = BASE_OFFENSE_SHARE;
+  let share = persona.profile.offenceShare;
   // Nothing is scoring against us: defensive cards have nothing to block, and
   // use-it-or-lose-it would force them onto the board anyway. Buy offense.
   if (!underThreat) return 0.85;
@@ -650,7 +681,7 @@ function computeOffenseShare(
   //
   // Returns early to bypass the 0.3 floor below, which exists to stop the
   // ordinary tilt from abandoning offence; here abandoning it is the point.
-  if (scoreDiff >= leadDefenceThreshold) return LEAD_DEFENCE_SHARE;
+  if (scoreDiff >= persona.leadDefenceThreshold) return LEAD_DEFENCE_SHARE;
 
   // Behind → tilt offensive to catch up.
   //
@@ -672,7 +703,7 @@ function computeOffenseShare(
   return clampShare(share, 0.3, 0.85);
 }
 
-// Greedily fill up to BUY_SLOT_CAP cards, interleaving offense/defense to keep
+// Greedily fill up to the profile's slot cap, interleaving offense/defense to keep
 // the running offense fraction near computeOffenseShare(view), always buying
 // the cheapest-affordable preferred pattern in the chosen role (respecting the
 // per-type copy cap and the remaining budget). Leftover budget rolls over —
@@ -680,21 +711,17 @@ function computeOffenseShare(
 // `underThreat` defaults to true so the Dummy/RuleBased policies and existing
 // callers keep the previous, threat-agnostic behaviour; only SimRankingBotPolicy
 // has a peek to base the answer on.
-// `leadDefenceThreshold` defaults to Infinity — never protect — so the
-// Dummy/RuleBased policies and direct callers keep racing regardless of score,
-// which is what they did before the dial existed.
+// `persona` defaults to the balanced profile that never protects a lead, so
+// the Dummy/RuleBased policies and direct callers keep the behaviour they had
+// before either dial existed.
 export function planBudgetAwareBuy(
   view: BotView,
   underThreat: boolean = true,
-  leadDefenceThreshold: number = Infinity,
+  persona: BuyPersona = DEFAULT_PERSONA,
 ): BuyBundle[] {
   const priceOf = (idx: number): number =>
     PATTERNS[idx]?.cells.length ?? Infinity;
-  const offenseShare = computeOffenseShare(
-    view,
-    underThreat,
-    leadDefenceThreshold,
-  );
+  const offenseShare = computeOffenseShare(view, underThreat, persona);
 
   const counts = new Map<number, number>();
   const copiesOf = (idx: number): number => counts.get(idx) ?? 0;
@@ -705,7 +732,7 @@ export function planBudgetAwareBuy(
   // tail of the place phase. Rounded down: overshooting parity buys nothing
   // extra, the tail only has to start before our first ship goes down.
   const parityTarget = Math.floor(
-    view.opponentCardCount * DEFENCE_PARITY_TARGET,
+    view.opponentCardCount * persona.profile.parityTarget,
   );
 
   // Buy the first affordable, under-cap pattern from a role's preference list.
@@ -722,7 +749,7 @@ export function planBudgetAwareBuy(
     return false;
   };
 
-  while (slots < BUY_SLOT_CAP) {
+  while (slots < persona.profile.slotCap) {
     const offenseSlots = OFFENSE_PREFERENCE.reduce(
       (sum, idx) => sum + copiesOf(idx),
       0,
@@ -774,7 +801,11 @@ export class SimRankingBotPolicy implements BotPolicy {
 
   // Drawn once per game and then fixed: a persona is only a personality if it
   // is coherent for a whole match. Redrawing per phase would read as noise.
-  readonly leadDefenceThreshold: number;
+  //
+  // The two axes are drawn independently — an aggressor that protects a small
+  // lead and a defender that never stops racing are both coherent opponents,
+  // and pinning the axes together would throw away most of the variety.
+  readonly persona: BuyPersona;
 
   constructor(
     game: Game,
@@ -783,6 +814,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       shortlistSize?: number;
       rng?: () => number;
       leadDefenceThreshold?: number;
+      profile?: BuyProfile;
     },
   ) {
     this.game = game;
@@ -790,12 +822,24 @@ export class SimRankingBotPolicy implements BotPolicy {
     this.horizonOverride = options?.horizon;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
     this.rng = options?.rng ?? mulberry32(DEFAULT_RNG_SEED);
-    this.leadDefenceThreshold =
-      options?.leadDefenceThreshold ??
-      LEAD_DEFENCE_THRESHOLDS[
-        Math.floor(this.rng() * LEAD_DEFENCE_THRESHOLDS.length)
-      ] ??
-      Infinity;
+    this.persona = {
+      profile:
+        options?.profile ??
+        BUY_PROFILES[Math.floor(this.rng() * BUY_PROFILES.length)] ??
+        BALANCED_PROFILE,
+      leadDefenceThreshold:
+        options?.leadDefenceThreshold ??
+        LEAD_DEFENCE_THRESHOLDS[
+          Math.floor(this.rng() * LEAD_DEFENCE_THRESHOLDS.length)
+        ] ??
+        Infinity,
+    };
+  }
+
+  // Kept as its own accessor because the tests and the buy planner both read
+  // it far more often than they read the profile.
+  get leadDefenceThreshold(): number {
+    return this.persona.leadDefenceThreshold;
   }
 
   // Read per decision, not captured in the constructor: the policy is built
@@ -821,7 +865,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       view.observedScoreRows.length > 0 ||
       view.observedMotion.some((m) => m.colsPerGen > 0) ||
       maxIncomingShips(view) > 0;
-    return planBudgetAwareBuy(view, underThreat, this.leadDefenceThreshold);
+    return planBudgetAwareBuy(view, underThreat, this.persona);
   }
 
   choosePlacement(
