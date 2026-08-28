@@ -13,6 +13,7 @@ import { BotController } from "../src/botController.js";
 import { LocalSyncManager } from "../src/syncManager.js";
 import { PATTERNS } from "../src/patterns.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";
+import { BALANCED_PROFILE } from "../src/botPolicy.js";
 import { makeGame, BLOCK_INDEX, LWSS_INDEX } from "./_helpers.js";
 
 const MWSS_INDEX = 1;
@@ -535,6 +536,15 @@ function defensiveCards(bundles: { patternIndex: number; count: number }[]) {
 }
 
 describe("SimRankingBotPolicy — buy gating", () => {
+  // Balanced profile pinned: this block is about the threat gating, and a
+  // drawn defender profile chases card-count parity regardless of threat,
+  // which would confound every assertion here.
+  const gatingPolicy = (game: ReturnType<typeof makeGame>) =>
+    new SimRankingBotPolicy(game, {
+      horizon: 60,
+      profile: BALANCED_PROFILE,
+    });
+
   // Three cards for nine points: at the cheapest price in the game that is
   // three Blinkers, so the spend proves the incoming hand cannot fly. Stated
   // explicitly because "nothing threatens me" is a claim about all three
@@ -567,7 +577,7 @@ describe("SimRankingBotPolicy — buy gating", () => {
     // Same clean board, same card count — only the spend differs. Three cards
     // for 33 is affordable only as three MWSS, so this must not gate down.
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 60 });
+    const policy = gatingPolicy(game);
     expect(
       defensiveCards(policy.chooseBuy(buyView(game, [], 33))),
     ).toBeGreaterThan(1);
@@ -575,7 +585,7 @@ describe("SimRankingBotPolicy — buy gating", () => {
 
   it("treats an unknown spend as dangerous, not as safe", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 60 });
+    const policy = gatingPolicy(game);
     expect(
       defensiveCards(policy.chooseBuy(buyView(game, [], null))),
     ).toBeGreaterThan(1);
@@ -583,7 +593,7 @@ describe("SimRankingBotPolicy — buy gating", () => {
 
   it("barely buys defence when nothing scored against it last phase", () => {
     const game = makeGame();
-    const policy = new SimRankingBotPolicy(game, { horizon: 60 });
+    const policy = gatingPolicy(game);
     expect(
       defensiveCards(policy.chooseBuy(buyView(game, []))),
     ).toBeLessThanOrEqual(1);

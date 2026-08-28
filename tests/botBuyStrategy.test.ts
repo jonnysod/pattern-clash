@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 import {
   planBudgetAwareBuy,
   LEAD_DEFENCE_THRESHOLDS,
+  BUY_PROFILES,
+  BALANCED_PROFILE,
   SimRankingBotPolicy,
 } from "../src/botPolicy.js";
 import type { BotView, BuyBundle } from "../src/botPolicy.js";
@@ -202,31 +204,37 @@ describe("planBudgetAwareBuy — card-count parity", () => {
 
 describe("planBudgetAwareBuy — lead defence", () => {
   const ahead = (by: number) => view({ ownScore: by, opponentScore: 0 });
+  // Balanced profile throughout: this block is about the threshold axis, so
+  // the buying profile is held fixed rather than drawn.
+  const persona = (leadDefenceThreshold: number) => ({
+    profile: BALANCED_PROFILE,
+    leadDefenceThreshold,
+  });
   const countDefence = (b: BuyBundle[]): number =>
     b.filter((x) => DEFENSE.has(x.patternIndex)).reduce((s, x) => s + x.count, 0);
 
   it("swings defensive once the lead passes the threshold", () => {
-    const below = planBudgetAwareBuy(ahead(40), true, 50);
-    const above = planBudgetAwareBuy(ahead(60), true, 50);
+    const below = planBudgetAwareBuy(ahead(40), true, persona(50));
+    const above = planBudgetAwareBuy(ahead(60), true, persona(50));
     expect(offenseFraction(above)).toBeLessThan(offenseFraction(below));
   });
 
   it("keeps racing below the threshold", () => {
-    const neutral = planBudgetAwareBuy(view(), true, 50);
-    const slightly = planBudgetAwareBuy(ahead(40), true, 50);
+    const neutral = planBudgetAwareBuy(view(), true, persona(50));
+    const slightly = planBudgetAwareBuy(ahead(40), true, persona(50));
     expect(offenseFraction(slightly)).toBe(offenseFraction(neutral));
   });
 
   it("respects where the threshold sits", () => {
     // A 120-point lead protects under a 100 threshold but not under a 150 one.
-    const tight = planBudgetAwareBuy(ahead(120), true, 100);
-    const loose = planBudgetAwareBuy(ahead(120), true, 150);
+    const tight = planBudgetAwareBuy(ahead(120), true, persona(100));
+    const loose = planBudgetAwareBuy(ahead(120), true, persona(150));
     expect(offenseFraction(tight)).toBeLessThan(offenseFraction(loose));
   });
 
   it("never protects when the drawn threshold is 'never'", () => {
-    const huge = planBudgetAwareBuy(ahead(1000), true, Infinity);
-    const neutral = planBudgetAwareBuy(view(), true, Infinity);
+    const huge = planBudgetAwareBuy(ahead(1000), true, persona(Infinity));
+    const neutral = planBudgetAwareBuy(view(), true, persona(Infinity));
     expect(offenseFraction(huge)).toBe(offenseFraction(neutral));
   });
 
@@ -237,7 +245,7 @@ describe("planBudgetAwareBuy — lead defence", () => {
     // anyway — so no assertion on the share can pin down which one acted.
     // What matters either way: blocks with no target are not stockpiled,
     // since use-it-or-lose-it puts them on our own board.
-    const bundles = planBudgetAwareBuy(ahead(200), false, 50);
+    const bundles = planBudgetAwareBuy(ahead(200), false, persona(50));
     expect(countDefence(bundles)).toBeLessThanOrEqual(1);
   });
 });
@@ -266,5 +274,124 @@ describe("SimRankingBotPolicy — lead threshold draw", () => {
       );
     }
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Buy profiles (persona axis)
+// ---------------------------------------------------------------------------
+//
+// A profile is only a personality if it changes what lands on the board.
+// These check that each one is distinguishable from the others in the buy
+// itself, not merely that the constants differ.
+
+describe("planBudgetAwareBuy — buy profiles", () => {
+  const withProfile = (name: string) => ({
+    profile: BUY_PROFILES.find((p) => p.name === name)!,
+    leadDefenceThreshold: Infinity,
+  });
+  const buy = (name: string, over: Partial<BotView> = {}) =>
+    planBudgetAwareBuy(
+      view({ ownBudget: 65, opponentCardCount: 5, ...over }),
+      true,
+      withProfile(name),
+    );
+
+  it("offers three named profiles including the measured defaults", () => {
+    expect(BUY_PROFILES.map((p) => p.name)).toEqual([
+      "aggressor",
+      "balanced",
+      "defender",
+    ]);
+    expect(BALANCED_PROFILE.name).toBe("balanced");
+  });
+
+  it("buys a higher offence fraction as aggressor than as defender", () => {
+    expect(offenseFraction(buy("aggressor"))).toBeGreaterThan(
+      offenseFraction(buy("defender")),
+    );
+  });
+
+  it("puts the balanced profile between the other two", () => {
+    const a = offenseFraction(buy("aggressor"));
+    const b = offenseFraction(buy("balanced"));
+    const d = offenseFraction(buy("defender"));
+    expect(b).toBeLessThanOrEqual(a);
+    expect(b).toBeGreaterThanOrEqual(d);
+  });
+
+  it("buys fewer, costlier cards as aggressor than as defender", () => {
+    const cards = (name: string) =>
+      buy(name).reduce((s, x) => s + x.count, 0);
+    expect(cards("aggressor")).toBeLessThan(cards("defender"));
+  });
+
+  it("keeps every profile inside budget, slot and copy limits", () => {
+    for (const p of BUY_PROFILES) {
+      const bundles = buy(p.name);
+      const spent = bundles.reduce(
+        (s, b) => s + PATTERNS[b.patternIndex]!.cells.length * b.count,
+        0,
+      );
+      expect(spent).toBeLessThanOrEqual(65);
+      expect(bundles.reduce((s, x) => s + x.count, 0)).toBeLessThanOrEqual(
+        CONFIG.MAX_SLOTS,
+      );
+      for (const b of bundles) {
+        expect(b.count).toBeLessThanOrEqual(CONFIG.MAX_COPIES_PER_TYPE);
+      }
+    }
+  });
+
+  it("never leaves any profile without a spaceship", () => {
+    // The offence floor is global, not a profile dial: a bot that scores
+    // nothing cannot win, whatever its temperament.
+    for (const p of BUY_PROFILES) {
+      const offence = buy(p.name, { ownBudget: 18, opponentCardCount: 10 })
+        .filter((x) => OFFENSE.has(x.patternIndex))
+        .reduce((s, x) => s + x.count, 0);
+      expect(offence).toBeGreaterThanOrEqual(1);
+    }
+  });
+});
+
+describe("SimRankingBotPolicy — persona draw", () => {
+  it("draws both axes and keeps them for the game", () => {
+    const game = makeGame();
+    const policy = new SimRankingBotPolicy(game, { horizon: 10 });
+
+    expect(BUY_PROFILES).toContain(policy.persona.profile);
+    expect(LEAD_DEFENCE_THRESHOLDS).toContain(policy.leadDefenceThreshold);
+
+    const before = policy.persona;
+    policy.chooseBuy(view());
+    expect(policy.persona).toBe(before);
+  });
+
+  it("varies the profile across games", () => {
+    const game = makeGame();
+    const seen = new Set<string>();
+    let seed = 7;
+    for (let i = 0; i < 40; i++) {
+      const rng = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+      seen.add(
+        new SimRankingBotPolicy(game, { horizon: 10, rng }).persona.profile.name,
+      );
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("draws the two axes independently", () => {
+    // If they were pinned together, profile would determine threshold and the
+    // observed pairs would number at most BUY_PROFILES.length.
+    const game = makeGame();
+    const pairs = new Set<string>();
+    let seed = 11;
+    for (let i = 0; i < 200; i++) {
+      const rng = () => ((seed = (seed * 48271) % 2147483647) / 2147483647);
+      const p = new SimRankingBotPolicy(game, { horizon: 10, rng }).persona;
+      pairs.add(`${p.profile.name}/${p.leadDefenceThreshold}`);
+    }
+    expect(pairs.size).toBeGreaterThan(BUY_PROFILES.length);
   });
 });
