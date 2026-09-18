@@ -248,8 +248,17 @@ export class DummyBotPolicy implements BotPolicy {
 // never sacrifice an already-evaluated card for a not-yet-placed one, so
 // "clear debris now so a later ship scores" is out of scope for V1.
 
-// Spaceships — patterns that travel and should use the offensive shortlist.
-const OFFENSIVE_PATTERN_INDICES = new Set([0, 1, 8, 9, 10, 11, 12]);
+// Patterns that travel and should use the offensive shortlist: anything with
+// a non-static movement profile. Derived from the movement physics in
+// patterns.ts rather than kept as a hand-maintained index set — the previous
+// `OFFENSIVE_PATTERN_INDICES = {0, 1, 8, 9, 10, 11, 12}` duplicated exactly
+// that information, and a newly added ship would have fallen silently into
+// the defensive candidate generator until someone remembered the set.
+// An unknown index reads as static (defensive path), matching the old
+// behaviour of not being in the set.
+function isOffensivePatternIndex(patternIndex: number): boolean {
+  return (PATTERNS[patternIndex]?.movement.kind ?? "static") !== "static";
+}
 
 // Horizon defaults to the game's full simulation length (game.simGenerations,
 // which ramps 150 → 250 across the six phases) — the real sim runs exactly
@@ -523,7 +532,7 @@ export class SimRankingBotPolicy implements BotPolicy {
     // kill lowers the opponent's score and rises in the ranking on its own.
     // Roles decide the *order* here, never the value.
     const isOffensive = (card: Card): boolean =>
-      OFFENSIVE_PATTERN_INDICES.has(card.patternIndex);
+      isOffensivePatternIndex(card.patternIndex);
     const holdOffence =
       view.opponentCardCount > 0 && view.ownHand.some((c) => !isOffensive(c));
     const playableHand = holdOffence
@@ -607,7 +616,7 @@ export class SimRankingBotPolicy implements BotPolicy {
     pattern: Pattern,
     view: BotView,
   ): { row: number; col: number }[] {
-    if (OFFENSIVE_PATTERN_INDICES.has(card.patternIndex)) {
+    if (isOffensivePatternIndex(card.patternIndex)) {
       // Keep a second ship away from the debris field the first one will
       // leave (see SHIP_MIN_ROW_SEPARATION). This has to happen here rather
       // than as a ranking tier: on a quiet board the offensive heuristic is
@@ -615,7 +624,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       // sits in the *same* row and differs only by column — a tier would have
       // had nothing else to choose from, and both ships would stack.
       const shipRows = view.ownPlacements
-        .filter((p) => OFFENSIVE_PATTERN_INDICES.has(p.patternIndex))
+        .filter((p) => isOffensivePatternIndex(p.patternIndex))
         .map((p) => p.row);
       const clear = (row: number): boolean =>
         shipRows.every((r) => Math.abs(r - row) >= SHIP_MIN_ROW_SEPARATION);
