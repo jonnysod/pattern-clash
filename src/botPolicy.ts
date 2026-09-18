@@ -162,7 +162,7 @@ function footprintOverlapsGrid(
   return false;
 }
 
-export class RuleBasedBotPolicy {
+export class RuleBasedBotPolicy implements BotPolicy {
   private game: Game;
 
   constructor(game: Game) {
@@ -173,10 +173,26 @@ export class RuleBasedBotPolicy {
     return DUMMY_BUNDLE;
   }
 
+  // Joint BotPolicy entry point: always plays the first card in hand at its
+  // single best heuristic position. This is what the "Casual" difficulty
+  // level runs — placement quality comes entirely from the 2a heuristic,
+  // with no simulation peek and no card selection.
+  choosePlacement(
+    view: BotView,
+  ): { cardId: string; row: number; col: number } | null {
+    const card = view.ownHand[0];
+    if (!card) return null;
+    const { row, col } = this.choosePlacementForCard(view, card);
+    return { cardId: card.id, row, col };
+  }
+
   // Single-best convenience wrapper, kept for tests and as a reference
   // baseline. Stufe 3 calls rankPlacements() directly to get a shortlist
   // instead of just the top pick.
-  choosePlacement(view: BotView, card: Card): { row: number; col: number } {
+  choosePlacementForCard(
+    view: BotView,
+    card: Card,
+  ): { row: number; col: number } {
     const basePattern = PATTERNS[card.patternIndex];
     if (!basePattern) return { row: 0, col: this.game.zones.rightStart };
     const pattern = getPatternForPlayer(basePattern, 2);
@@ -798,6 +814,13 @@ export class SimRankingBotPolicy implements BotPolicy {
   private horizonOverride: number | undefined;
   private shortlistSize: number;
   private rng: () => number;
+  // Difficulty handicap: probability of deliberately playing from the second-
+  // or third-best tie group of the placement ranking instead of the best one.
+  // 0 (the default) is full strength — every dial in this class is tuned for
+  // the strongest bot, and epsilon is the one exception, existing purely so
+  // lower difficulty levels can be built from the same policy (see
+  // botDifficulty.ts). It never touches the buy.
+  private epsilon: number;
 
   // Drawn once per game and then fixed: a persona is only a personality if it
   // is coherent for a whole match. Redrawing per phase would read as noise.
@@ -815,6 +838,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       rng?: () => number;
       leadDefenceThreshold?: number;
       profile?: BuyProfile;
+      epsilon?: number;
     },
   ) {
     this.game = game;
@@ -822,6 +846,7 @@ export class SimRankingBotPolicy implements BotPolicy {
     this.horizonOverride = options?.horizon;
     this.shortlistSize = options?.shortlistSize ?? SHORTLIST_SIZE;
     this.rng = options?.rng ?? mulberry32(DEFAULT_RNG_SEED);
+    this.epsilon = options?.epsilon ?? 0;
     this.persona = {
       profile:
         options?.profile ??
@@ -871,8 +896,8 @@ export class SimRankingBotPolicy implements BotPolicy {
   choosePlacement(
     view: BotView,
   ): { cardId: string; row: number; col: number } | null {
-    // Every placement that ties on the full ranking key. One is drawn at
-    // random at the end rather than taking whichever the loop saw first.
+    // Every evaluated candidate with its full ranking key; the winner is
+    // grouped and drawn at the end rather than taken in loop order.
     //
     // The tiers below are thresholds and integer sums, so exact ties are the
     // common case, not an edge case — and resolving them by iteration order
@@ -882,9 +907,14 @@ export class SimRankingBotPolicy implements BotPolicy {
     // (2129) launched from row 10, 20, 32, 44, 56, 68 or 80 — the choice among
     // tied rows is worth nothing, which is exactly what makes it free to
     // randomise. Nothing below the tie is randomised: the tiers themselves are
-    // never sampled past.
-    let bestKey: number[] | null = null;
-    let tied: { cardId: string; row: number; col: number }[] = [];
+    // only ever sampled past by the explicit epsilon handicap at the end,
+    // which full strength (epsilon 0) never takes.
+    const entries: {
+      key: number[];
+      cardId: string;
+      row: number;
+      col: number;
+    }[] = [];
 
     const compare = (a: number[], b: number[]): number => {
       for (let i = 0; i < a.length; i++) {
@@ -968,18 +998,41 @@ export class SimRankingBotPolicy implements BotPolicy {
           isClear(row) ? 1 : 0,
           -Math.abs(row - midRow), // higher = more central
         ];
-        const cmp = bestKey === null ? 1 : compare(key, bestKey);
-        if (cmp > 0) {
-          bestKey = key;
-          tied = [{ cardId: card.id, row, col }];
-        } else if (cmp === 0) {
-          tied.push({ cardId: card.id, row, col });
-        }
+        entries.push({ key, cardId: card.id, row, col });
       }
     }
 
-    if (tied.length > 0) {
-      return tied[Math.floor(this.rng() * tied.length)] ?? tied[0]!;
+    if (entries.length > 0) {
+      // Stable sort, best key first: equal keys keep their loop order, so
+      // with epsilon 0 the group draw below picks from exactly the same set,
+      // in the same order, with the same single rng call as the pre-epsilon
+      // implementation — full strength is bit-for-bit unchanged.
+      entries.sort((a, b) => compare(b.key, a.key));
+      const groups: (typeof entries)[] = [];
+      for (const entry of entries) {
+        const current = groups[groups.length - 1];
+        if (current && compare(current[0]!.key, entry.key) === 0) {
+          current.push(entry);
+        } else {
+          groups.push([entry]);
+        }
+      }
+
+      // Epsilon handicap: occasionally play from the second- or third-best
+      // tie group. Sampled over *groups* rather than raw ranks on purpose — a
+      // group is one strategic option repeated across equivalent spots, so
+      // rank-based sampling would mostly land in the (large) best group and
+      // barely weaken anything. Never deeper than the third group: the point
+      // is a plausible lapse, not a random move — level 1 already covers
+      // random.
+      let groupIndex = 0;
+      if (this.epsilon > 0 && groups.length > 1 && this.rng() < this.epsilon) {
+        groupIndex =
+          1 + Math.floor(this.rng() * Math.min(2, groups.length - 1));
+      }
+      const group = groups[groupIndex]!;
+      const pick = group[Math.floor(this.rng() * group.length)] ?? group[0]!;
+      return { cardId: pick.cardId, row: pick.row, col: pick.col };
     }
 
     // Fallback: no legal candidate was found for any card (shouldn't

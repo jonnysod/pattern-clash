@@ -12,7 +12,8 @@ import { Game } from "./game.js";
 import { Renderer } from "./rendering.js";
 import { UIController } from "./ui.js";
 import { BotController } from "./botController.js";
-import { SimRankingBotPolicy } from "./botPolicy.js";
+import { createBotPolicy } from "./botDifficulty.js";
+import type { BotDifficultyLevel } from "./botDifficulty.js";
 import { LocalSyncManager, OnlineSyncManager } from "./syncManager.js";
 import { FirebaseTransport } from "./firebaseTransport.js";
 import { createDOMRefs } from "./domRefs.js";
@@ -66,15 +67,15 @@ function startLocalGame(): void {
   };
 }
 
-function startBotGame(): void {
+function startBotGame(level: BotDifficultyLevel): void {
   dom.startOverlay.style.display = "none";
   game.reset();
   renderer.drawGrid();
 
   const syncManager = new LocalSyncManager();
-  // Real entropy only here: the policy defaults to a fixed seed so the test
+  // Real entropy only here: the policies default to a fixed seed so the test
   // suite stays deterministic (see mulberry32 in botPolicy.ts).
-  const policy = new SimRankingBotPolicy(game, { rng: Math.random });
+  const policy = createBotPolicy(level, game, Math.random);
   const botController = new BotController(game, syncManager, policy);
 
   uiController = new UIController(
@@ -104,6 +105,7 @@ function showLobby(): void {
 
 function showLobbySection(sectionId: string): void {
   dom.lobbyModeSelect.style.display = "none";
+  dom.lobbyBotDifficulty.style.display = "none";
   dom.lobbyOnlineChoice.style.display = "none";
   dom.lobbyWaiting.style.display = "none";
   dom.lobbyJoin.style.display = "none";
@@ -304,7 +306,20 @@ dom.localGameBtn.addEventListener("click", () => {
 });
 
 dom.botGameBtn.addEventListener("click", () => {
-  startBotGame();
+  showLobbySection("lobbyBotDifficulty");
+});
+
+const botLevelButtons: [HTMLButtonElement, BotDifficultyLevel][] = [
+  [dom.botLevel1Btn, 1],
+  [dom.botLevel2Btn, 2],
+  [dom.botLevel3Btn, 3],
+  [dom.botLevel4Btn, 4],
+];
+for (const [btn, level] of botLevelButtons) {
+  btn.addEventListener("click", () => startBotGame(level));
+}
+dom.lobbyBackBtn4.addEventListener("click", () => {
+  showLobbySection("lobbyModeSelect");
 });
 
 dom.onlineGameBtn.addEventListener("click", () => {

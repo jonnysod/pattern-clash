@@ -93,6 +93,14 @@ export function createDOMRefs() {
     lobbyBackBtn2: getElement<HTMLButtonElement>("lobbyBackBtn2"),
     lobbyBackBtn3: getElement<HTMLButtonElement>("lobbyBackBtn3"),
 
+    // Lobby: bot difficulty selection
+    lobbyBotDifficulty: getElement<HTMLDivElement>("lobbyBotDifficulty"),
+    botLevel1Btn: getElement<HTMLButtonElement>("botLevel1Btn"),
+    botLevel2Btn: getElement<HTMLButtonElement>("botLevel2Btn"),
+    botLevel3Btn: getElement<HTMLButtonElement>("botLevel3Btn"),
+    botLevel4Btn: getElement<HTMLButtonElement>("botLevel4Btn"),
+    lobbyBackBtn4: getElement<HTMLButtonElement>("lobbyBackBtn4"),
+
     // Lobby: Mini Games entry point
     miniGamesBtn: getElement<HTMLButtonElement>("miniGamesBtn"),
 
