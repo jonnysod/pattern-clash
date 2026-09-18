@@ -39,7 +39,7 @@ describe("RuleBasedBotPolicy — self-score avoidance", () => {
 
     for (let idx = 0; idx < PATTERNS.length; idx++) {
       const card = { id: "t", patternIndex: idx };
-      const { row, col } = policy.choosePlacement(makeView(game), card);
+      const { row, col } = policy.choosePlacementForCard(makeView(game), card);
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
 
       // Verify the chosen position is legal
@@ -92,7 +92,7 @@ describe("RuleBasedBotPolicy — self-score avoidance", () => {
       }
     }
 
-    const { row, col } = policy.choosePlacement(makeView(game), card);
+    const { row, col } = policy.choosePlacementForCard(makeView(game), card);
     const pattern = getPatternForPlayer(PATTERNS[BLOCK_INDEX]!, 2);
     expect(row).toBeGreaterThanOrEqual(0);
     expect(row).toBeLessThan(game.rows);
@@ -111,7 +111,7 @@ describe("RuleBasedBotPolicy — offensive orientation", () => {
 
     for (let idx = 0; idx < PATTERNS.length; idx++) {
       const card = { id: "t", patternIndex: idx };
-      const { row, col } = policy.choosePlacement(makeView(game), card);
+      const { row, col } = policy.choosePlacementForCard(makeView(game), card);
       const pattern = getPatternForPlayer(PATTERNS[idx]!, 2);
       expect(
         game.zones.isValidPatternPlacement(pattern, row, col, 2),
@@ -173,7 +173,7 @@ describe("RuleBasedBotPolicy — regression full game", () => {
           const col = game.zones.goalZoneLeftEnd + 1;
           game.applyPlacement(1, card.id, card.patternIndex, 0, col);
         } else {
-          const { row, col } = policy.choosePlacement(makeView(game), card);
+          const { row, col } = policy.choosePlacementForCard(makeView(game), card);
           game.applyPlacement(2, card.id, card.patternIndex, row, col);
         }
       }
