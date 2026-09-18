@@ -7,9 +7,9 @@ import {
   DummyBotPolicy,
   RuleBasedBotPolicy,
   SimRankingBotPolicy,
-  BALANCED_PROFILE,
 } from "../src/botPolicy.js";
-import type { BotView } from "../src/botPolicy.js";
+import { BALANCED_PROFILE } from "../src/botBuy.js";
+import type { BotView } from "../src/botView.js";
 import type { Card } from "../src/types.js";
 import { makeGame, BLOCK_INDEX } from "./_helpers.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";

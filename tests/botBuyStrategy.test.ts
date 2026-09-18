@@ -6,9 +6,9 @@ import {
   LEAD_DEFENCE_THRESHOLDS,
   BUY_PROFILES,
   BALANCED_PROFILE,
-  SimRankingBotPolicy,
-} from "../src/botPolicy.js";
-import type { BotView, BuyBundle } from "../src/botPolicy.js";
+} from "../src/botBuy.js";
+import { SimRankingBotPolicy } from "../src/botPolicy.js";
+import type { BotView, BuyBundle } from "../src/botView.js";
 import { PATTERNS } from "../src/patterns.js";
 import { CONFIG } from "../src/config.js";
 import { makeGame } from "./_helpers.js";

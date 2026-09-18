@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Game } from "../src/game.js";
 import { BotController } from "../src/botController.js";
 import { DummyBotPolicy } from "../src/botPolicy.js";
-import type { BotView } from "../src/botPolicy.js";
+import type { BotView } from "../src/botView.js";
 import { LocalSyncManager } from "../src/syncManager.js";
 import { PATTERNS } from "../src/patterns.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";

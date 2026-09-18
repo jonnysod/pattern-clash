@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import { SimRankingBotPolicy } from "../src/botPolicy.js";
-import type { BotView } from "../src/botPolicy.js";
+import type { BotView } from "../src/botView.js";
 import { RuleBasedBotPolicy } from "../src/botPolicy.js";
 import { BotController } from "../src/botController.js";
 import { LocalSyncManager } from "../src/syncManager.js";

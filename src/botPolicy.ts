@@ -1,128 +1,25 @@
-// Bot policy interface, V1 dummy implementation, and Stufe-2a rule-based policy.
+// Bot policies: V1 dummy, Stufe-2a rule-based, and the Stufe-3 sim-ranking
+// hybrid that production runs.
 //
-// BotPolicy is the single extension point for bot intelligence.
-// Stufe 2/3 swap the implementation here — the BotController integration
-// stays unchanged.
-//
-// BotView is a deliberately redacted projection of game state.
-// It exposes only what a human player could see on screen:
-// own hand (full), opponent card count (never contents), public grid.
+// BotPolicy (botView.ts) is the single extension point for bot intelligence —
+// difficulty levels and future personas swap or configure the implementation
+// here, the BotController integration stays unchanged. The threat model lives
+// in botThreat.ts, the buy planner and personas in botBuy.ts.
 
-import type { Card, Pattern, ScoreEvent } from "./types.js";
+import type { Card, Pattern } from "./types.js";
 import type { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
 import { Engine } from "./engine.js";
-import { CONFIG } from "./config.js";
-
-// A placement made during the current place phase — the opponent's (which
-// the bot has witnessed) or one of the bot's own.
-//
-// Fair by the game's own standard: a placement is public. The online
-// protocol puts patternIndex on the wire in the `placement` action (only
-// `buyConfirm` withholds it), so a remote human client learns exactly this,
-// at exactly this moment. What stays hidden is the *hand* — cards not yet
-// played — which is what the anti-sniffing model protects.
-export interface WitnessedPlacement {
-  patternIndex: number;
-  row: number;
-  col: number;
-}
-
-export interface BotView {
-  grid: boolean[][];
-  phase: number;
-  ownBudget: number;
-  ownHand: Card[];
-  opponentCardCount: number; // count only — contents are never exposed
-  // The opponent's remaining budget, and what they spent in this buy phase.
-  //
-  // Both are public by the game's own standard: each player's budget is on
-  // screen for the whole match, and `remainingBudget` rides in the buyConfirm
-  // action precisely so the other client can display it. Withholding them from
-  // the bot did not protect anything — it just left it blind to two numbers a
-  // human reads off the status bar.
-  //
-  // What they buy is the bound in maxIncomingShips(): the count says how many
-  // cards, the spend says how expensive they were, and cheap cards cannot fly.
-  // The hand itself stays hidden, so the anti-sniffing model is untouched.
-  //
-  // opponentSpentThisPhase is null when no reference point was taken for this
-  // phase; callers must treat that as "unknown", never as "nothing".
-  opponentBudget: number;
-  opponentSpentThisPhase: number | null;
-  ownScore: number;
-  opponentScore: number;
-  // Placements made by the opponent during the *current* place phase, in
-  // order. Scoped to this phase on purpose: no simulation runs during a
-  // place phase, so a piece is still exactly where it was put and the
-  // trajectory projection below is exact.
-  opponentPlacements: WitnessedPlacement[];
-  // The bot's own placements during the *current* place phase, in order.
-  //
-  // Needed because two spaceships launched too close together destroy each
-  // other's debris field when they land (see SHIP_MIN_ROW_SEPARATION), and
-  // the grid alone cannot answer "did I launch a ship on that row *this
-  // phase*" — old debris in our own zone looks the same. Cleared per phase
-  // alongside opponentPlacements.
-  ownPlacements: WitnessedPlacement[];
-  // Rows where the opponent actually scored during the previous simulation
-  // phase, heaviest first. This is the bot's threat signal for anything it
-  // did not witness being placed — above all the stationary debris a crashed
-  // spaceship leaves behind, which keeps scoring forever without ever moving.
-  //
-  // Observation rather than a forward simulation of the current board, by
-  // design: it is exactly what a human sees while watching the "+N" floaters
-  // in the sim phase, and it is fact rather than extrapolation of a board
-  // both players are about to reshape with new placements. The trade is
-  // accepted knowingly — a piece already in flight that has not scored yet
-  // is invisible here until the phase in which it first lands.
-  //
-  // Empty in phase 1: there is no previous simulation, and the board is empty.
-  observedScoreRows: number[];
-  // Things that were seen *travelling* towards us during the previous
-  // simulation phase, with the velocity measured from two observed frames.
-  //
-  // This is the third and last threat class, and it is disjoint from the other
-  // two: a piece placed this phase has not moved yet (no simulation runs
-  // during a place phase), and a piece still in flight has not scored yet, so
-  // neither of the other signals can see it. Left uncovered it is expensive —
-  // a spaceship launched from the back of the opponent's zone needs 184
-  // generations to arrive, so it crosses a phase boundary in silence and then
-  // lands for ~275 points.
-  //
-  // Measured rather than looked up: the frame diff yields the velocity
-  // directly, so this also covers movers that were never witnessed as a
-  // placement, such as the glider stream a gun emits.
-  observedMotion: MovingThreat[];
-}
-
-// A moving object observed on the board, in cells per generation. colsPerGen
-// is positive when it is travelling towards us (increasing columns).
-export interface MovingThreat {
-  row: number; // centroid row in the most recent observed frame
-  col: number; // centroid column in the most recent observed frame
-  colsPerGen: number;
-  rowsPerGen: number;
-}
-
-export interface BuyBundle {
-  patternIndex: number;
-  count: number;
-}
-
-// Stufe 3: the placement decision is joint — given the full remaining hand
-// (via view.ownHand), the policy picks both *which* card and *where* to
-// place it. Stufe 2's "given a card, choose a position" is gone; policies
-// that still want a fixed-card variant (DummyBotPolicy, RuleBasedBotPolicy)
-// keep an extra two-arg method for tests/reuse but no longer surface it
-// through this interface.
-export interface BotPolicy {
-  chooseBuy(view: BotView): BuyBundle[];
-  choosePlacement(
-    view: BotView,
-  ): { cardId: string; row: number; col: number } | null;
-}
+import type { BotPolicy, BotView, BuyBundle } from "./botView.js";
+import { defensiveRowsFor, maxIncomingShips } from "./botThreat.js";
+import {
+  BALANCED_PROFILE,
+  BUY_PROFILES,
+  LEAD_DEFENCE_THRESHOLDS,
+  planBudgetAwareBuy,
+} from "./botBuy.js";
+import type { BuyPersona, BuyProfile } from "./botBuy.js";
 
 // Fixed bundle bought every phase regardless of budget leftovers.
 // Stufe 2 will replace this with budget-aware selection.
@@ -404,92 +301,6 @@ const SHORTLIST_SIZE = 6;
 // and the fix for that is moving the peek off the main thread.
 const DEFENSIVE_SHORTLIST_SIZE = 16;
 
-// ---------------------------------------------------------------------------
-// Threat model (Fix 3b)
-// ---------------------------------------------------------------------------
-//
-// The interception row is a *function of the interception column*, not a
-// fixed row. For an orthogonal spaceship the function is constant — it holds
-// its row, so blocking anywhere in that row works. For a glider it has slope
-// ±1: a glider placed at row 10 / col 20 enters P2's zone (col 66) at row 56.
-// A band around the *placement* row would miss it by 46 rows, which is why
-// this projects per candidate column instead of scattering around a row.
-//
-// A pattern is only worth intercepting if it can arrive at all. A glider
-// whose diagonal leaves the grid before reaching the defended zone dies at
-// the edge and is no threat — checking the row at the zone's near edge is
-// enough, since the drift is monotonic in the column.
-//
-// Deliberately *not* filtered by time: "cannot arrive within this phase's
-// generations" is not the same as harmless, because the board carries over
-// and a slow glider simply lands next phase. Only leaving the grid is a real
-// all-clear.
-// Upper bound on how many pieces in the opponent's freshly bought hand could
-// possibly reach us, from the two public numbers: card count and total spend.
-//
-// Every card costs at least the cheapest pattern in the game, and anything
-// that can actually travel the board costs at least the cheapest of *those*.
-// So for k travellers among c cards costing s in total:
-//
-//     cheapTravel*k + cheapAny*(c-k) <= s   =>   k <= (s - cheapAny*c) / delta
-//
-// With today's prices (Blinker 3, LWSS 9) that is k <= (s - 3c) / 6. Five
-// cards for 15 points proves *zero* travellers; three cards for 33 allows
-// three. The zero case is the valuable one — it is a certainty, not a guess,
-// and it says defence bought this phase would have nothing to catch.
-//
-// Diagonal patterns are excluded from "can travel": a glider moves at c/4 and
-// does not cross the board inside a phase (see the movement notes above), so
-// counting it would only make the bound needlessly pessimistic. Being wrong
-// in that direction is safe — the bound overstates the threat, never hides it.
-//
-// Prices are read from PATTERNS rather than written down, so the bound cannot
-// drift when a pattern is added or repriced.
-function maxIncomingShips(view: BotView): number {
-  const spent = view.opponentSpentThisPhase;
-  const cards = view.opponentCardCount;
-  // No reference point, or nothing bought: assume the worst rather than
-  // claiming a safety that was never observed.
-  if (spent === null) return cards;
-  if (cards <= 0) return 0;
-
-  let cheapAny = Infinity;
-  let cheapTravel = Infinity;
-  for (const pattern of PATTERNS) {
-    const price = pattern.cells.length;
-    if (price < cheapAny) cheapAny = price;
-    const kind = pattern.movement.kind;
-    if (kind === "orthogonal" || kind === "emitter") {
-      if (price < cheapTravel) cheapTravel = price;
-    }
-  }
-
-  const delta = cheapTravel - cheapAny;
-  if (delta <= 0) return cards; // no price separation to reason from
-  const bound = Math.floor((spent - cheapAny * cards) / delta);
-  return Math.max(0, Math.min(cards, bound));
-}
-
-const THREAT_WEIGHT: Record<string, number> = {
-  static: 0, // still lifes and oscillators never travel — ignore
-  orthogonal: 1,
-  diagonal: 1,
-  emitter: 2, // a gun keeps producing; one block never retires the threat
-};
-
-// Vertical reference point of a placed pattern, used as the origin of its
-// trajectory. The bounding-box centre tracks the measured centroid closely
-// for ships and gliders, and lands within a couple of rows of a gun's muzzle
-// (a 36-row gun placed at row 30 emits from ~row 48). Residual offset is
-// absorbed by INTERCEPT_ROW_BAND.
-function patternSourceRow(pattern: Pattern, placedRow: number): number {
-  let maxRowOffset = 0;
-  for (const [rowOffset] of pattern.cells) {
-    if (rowOffset > maxRowOffset) maxRowOffset = rowOffset;
-  }
-  return placedRow + Math.floor((maxRowOffset + 1) / 2);
-}
-
 // Rows either side of the projected intercept row to also offer. Covers the
 // bounding-box/centroid residual and the fact that a blocker sitting exactly
 // in a ship's path is not always the position that actually stops it —
@@ -541,272 +352,6 @@ function mulberry32(seed: number): () => number {
 }
 
 const DEFAULT_RNG_SEED = 0x5eed;
-
-// ---------------------------------------------------------------------------
-// Budget-aware buy planner (Stufe 4)
-// ---------------------------------------------------------------------------
-//
-// Placement is where the intelligence lives (sim-ranking picks *where* each
-// card goes); the buy only needs to (a) spend the budget instead of leaving
-// it on the table and (b) hand the ranker good raw material, tilted by game
-// state. So this stays a cheap rule-based heuristic with no simulation — a
-// sim-based buy would have to evaluate bundle × placement × sim, which is
-// unbounded and pointless given the placement stage already picks "where".
-//
-// Preference lists are role-internal priority: buy the top pattern up to the
-// copy cap, then fall to the next. Orthogonal spaceships lead the offense
-// list because they fly straight at the score column; gliders drift diagonally
-// and miss more often. Block leads the defense list as the cheapest solid
-// absorber.
-const OFFENSE_PREFERENCE = [1, 0, 8]; // MWSS, LWSS, Glider down
-const DEFENSE_PREFERENCE = [2, 5, 4]; // Block, Blinker, Boat
-
-// A buying temperament, drawn once per game alongside the lead threshold.
-//
-// Only dials that are genuinely a matter of taste belong here. The rest of
-// the bot's numbers were measured and have a right answer — ship separation,
-// the offence-hold gate, the shortlist size, the peek horizon — and varying
-// those would not produce a personality, only a worse opponent.
-//
-// The three differ in how they convert budget into board presence: the
-// aggressor buys few expensive pieces and ignores card count, the defender
-// buys many cheap ones and chases it, the balanced one is what the measured
-// defaults arrived at.
-export interface BuyProfile {
-  readonly name: string;
-  // Target fraction of bought slots that should be offensive.
-  readonly offenceShare: number;
-  // How hard to chase card-count parity, as a fraction of the opponent's hand:
-  // 0 disables the rule, 1 aims to match them card for card.
-  //
-  // Why parity is worth budget at all: the place phase alternates, so whoever
-  // still holds cards when the other runs out plays the remainder unanswered.
-  // Combined with holding offence back (see choosePlacement), every defensive
-  // card bought past the opponent's count converts one of our spaceships from
-  // "answerable by a 4-cell block" into "unanswerable".
-  //
-  // Why nobody gets 1: full parity is not affordable. From phase 2 the budget,
-  // not the slot cap, is binding — 25 points buys either two MWSS and one
-  // block, or one MWSS and four cheap cards. Swept against a five-card
-  // opponent, cards bought in phases 3-6 and offence surviving:
-  //
-  //   0.0 / 0.3 -> 3 cards, 2 spaceships   (target <= 1, rule never fires)
-  //   0.4       -> 4-5 cards, 2 spaceships
-  //   0.6 / 0.8 -> 4-5 cards, 1 spaceship
-  //   1.0       -> 5-7 cards, 1 spaceship
-  //
-  // 0.4 is where the tempo is still free; the step to 0.6 costs a whole MWSS
-  // and buys no extra cards. The defender pays that price knowingly — trading
-  // a spaceship for tempo is exactly what makes it a different opponent rather
-  // than a differently-tuned one.
-  readonly parityTarget: number;
-  // Of MAX_SLOTS (10): the cap on cards bought in one phase. Lower means less
-  // board presence but also fewer forced use-it-or-lose-it placements, which
-  // are what clutter our own zone and raise self-score risk.
-  readonly slotCap: number;
-}
-
-export const BUY_PROFILES: readonly BuyProfile[] = [
-  { name: "aggressor", offenceShare: 0.8, parityTarget: 0, slotCap: 5 },
-  { name: "balanced", offenceShare: 0.6, parityTarget: 0.4, slotCap: 7 },
-  { name: "defender", offenceShare: 0.4, parityTarget: 0.7, slotCap: 8 },
-];
-
-// The measured defaults, and what direct callers get when they pass nothing.
-export const BALANCED_PROFILE = BUY_PROFILES[1]!;
-
-// Persona = the two independent draws. Kept separate rather than folding the
-// threshold into a profile because they are orthogonal: "how do I buy" and
-// "what do I do when winning" are different questions, and pinning them
-// together would cut the variety a player actually notices.
-export interface BuyPersona {
-  readonly profile: BuyProfile;
-  readonly leadDefenceThreshold: number;
-}
-
-export const DEFAULT_PERSONA: BuyPersona = {
-  profile: BALANCED_PROFILE,
-  leadDefenceThreshold: Infinity,
-};
-
-function clampShare(x: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, x));
-}
-
-// Point lead at which the bot stops racing and starts protecting, drawn once
-// per game (see SimRankingBotPolicy). Infinity means never — it plays the same
-// whether it is winning or losing, which is roughly the old behaviour.
-//
-// Calibrated against real games rather than the single-piece measurements in
-// this file: serious matches end between 100 and 400 points, rarely 800. So 50
-// is an eighth to a half of a final score, and 200 is a commanding lead.
-//
-// Randomised because it is the axis a human notices most — "it went turtle on
-// me" reads as a personality, not as a weaker opponent — and because the
-// threshold is a genuine strategic choice rather than a solved value.
-export const LEAD_DEFENCE_THRESHOLDS = [50, 100, 150, 200, Infinity];
-
-// Offense share once the lead is being protected. Below the 0.3 floor the
-// normal tilt is clamped to, so protecting returns early rather than being
-// clamped back up into ordinary play.
-//
-// Defence is worth this much because it is the more point-efficient role once
-// a target exists: measured over a phase, a 4-point block on a debris source
-// took the opponent from 402 to 63 (~85 points saved per budget point), while
-// an unanswered 11-point MWSS scores 233 (~21 per budget point). Ahead, that
-// asymmetry counts twice — points denied widen the gap exactly as points
-// scored do.
-const LEAD_DEFENCE_SHARE = 0.2;
-
-// Cap on the *number* of defensive cards when nothing on the board is scoring
-// against us. Not zero: one absorber is cheap insurance against a threat placed
-// later in the same phase, which no peek of the current board can see yet.
-const DEFENSE_CAP_WITHOUT_THREAT = 1;
-
-
-// Never trade away the last spaceship, whatever parity would like. Enforced by
-// ordering rather than by reserving budget: below the floor the offensive buy
-// simply goes first, which on an empty basket is the very first purchase, so
-// the strongest affordable spaceship is secured before parity spends anything.
-const OFFENCE_FLOOR_CARDS = 1;
-
-// Target fraction of bought slots that should be offense, from view state.
-// `underThreat` comes from the threat signals — see planBudgetAwareBuy.
-function computeOffenseShare(
-  view: BotView,
-  underThreat: boolean,
-  persona: BuyPersona,
-): number {
-  const scoreDiff = view.ownScore - view.opponentScore; // + = ahead
-
-  let share = persona.profile.offenceShare;
-  // Nothing is scoring against us: defensive cards have nothing to block, and
-  // use-it-or-lose-it would force them onto the board anyway. Buy offense.
-  if (!underThreat) return 0.85;
-
-  // Protecting a lead. Deliberately below the threat check, so the two are
-  // conjunctive: a comfortable lead is no reason to buy blocks that have
-  // nothing to block, since use-it-or-lose-it forces them onto our own board
-  // anyway.
-  //
-  // That conjunction happens to be held twice over — the early return above
-  // means this line is never reached without a threat, and even if it were,
-  // DEFENSE_CAP_WITHOUT_THREAT caps defensive cards at one further down. Both
-  // guards predate this dial and are independently motivated, so neither was
-  // removed; it is worth knowing that no single test can distinguish them.
-  //
-  // Returns early to bypass the 0.3 floor below, which exists to stop the
-  // ordinary tilt from abandoning offence; here abandoning it is the point.
-  if (scoreDiff >= persona.leadDefenceThreshold) return LEAD_DEFENCE_SHARE;
-
-  // Behind → tilt offensive to catch up.
-  //
-  // Only the behind half is a gradient now. This used to be two-sided as
-  // `scoreDiff / 20`, which saturated at a four-point gap — two orders of
-  // magnitude below real scores (100-400 a game), so it was permanently
-  // pinned and acted as a constant flag rather than a slope. The ahead half
-  // is now the explicit threshold above; this half is rescaled to saturate
-  // around a hundred-point deficit, which is a real one.
-  if (scoreDiff < 0) share += clampShare(-scoreDiff / 500, 0, 0.2);
-
-  // More opponent cards on the board → more incoming threats → more defense.
-  share -= clampShare((view.opponentCardCount - 4) / 40, 0, 0.1);
-
-  // Final phase, no carryover into a next phase: if not already ahead, there
-  // is nothing left to protect — go all-in on scoring.
-  if (view.phase >= 6 && scoreDiff <= 0) share = 0.85;
-
-  return clampShare(share, 0.3, 0.85);
-}
-
-// Greedily fill up to the profile's slot cap, interleaving offense/defense to keep
-// the running offense fraction near computeOffenseShare(view), always buying
-// the cheapest-affordable preferred pattern in the chosen role (respecting the
-// per-type copy cap and the remaining budget). Leftover budget rolls over —
-// saving across phases is legal and intended.
-// `underThreat` defaults to true so the Dummy/RuleBased policies and existing
-// callers keep the previous, threat-agnostic behaviour; only SimRankingBotPolicy
-// has a peek to base the answer on.
-// `persona` defaults to the balanced profile that never protects a lead, so
-// the Dummy/RuleBased policies and direct callers keep the behaviour they had
-// before either dial existed.
-export function planBudgetAwareBuy(
-  view: BotView,
-  underThreat: boolean = true,
-  persona: BuyPersona = DEFAULT_PERSONA,
-): BuyBundle[] {
-  const priceOf = (idx: number): number =>
-    PATTERNS[idx]?.cells.length ?? Infinity;
-  const offenseShare = computeOffenseShare(view, underThreat, persona);
-
-  const counts = new Map<number, number>();
-  const copiesOf = (idx: number): number => counts.get(idx) ?? 0;
-  let slots = 0;
-  let budget = view.ownBudget;
-
-  // Cards of cheap defence that would put our offence in the unanswerable
-  // tail of the place phase. Rounded down: overshooting parity buys nothing
-  // extra, the tail only has to start before our first ship goes down.
-  const parityTarget = Math.floor(
-    view.opponentCardCount * persona.profile.parityTarget,
-  );
-
-  // Buy the first affordable, under-cap pattern from a role's preference list.
-  const tryBuy = (preference: number[]): boolean => {
-    for (const idx of preference) {
-      if (copiesOf(idx) >= CONFIG.MAX_COPIES_PER_TYPE) continue;
-      const price = priceOf(idx);
-      if (price > budget) continue;
-      counts.set(idx, copiesOf(idx) + 1);
-      budget -= price;
-      slots += 1;
-      return true;
-    }
-    return false;
-  };
-
-  while (slots < persona.profile.slotCap) {
-    const offenseSlots = OFFENSE_PREFERENCE.reduce(
-      (sum, idx) => sum + copiesOf(idx),
-      0,
-    );
-    const defenseSlots = slots - offenseSlots;
-
-    // Below the offence floor nothing else may spend: the win condition comes
-    // first, and parity protecting no offence protects nothing.
-    const needOffenceFloor = offenseSlots < OFFENCE_FLOOR_CARDS;
-
-    // Parity outranks the share arithmetic and the no-threat cap alike. The
-    // cap was written against blocks bought to *block* with nothing to block;
-    // these are bought for tempo, which does not depend on a threat existing.
-    const wantParity = !needOffenceFloor && defenseSlots < parityTarget;
-
-    // Hard cap rather than trusting the share arithmetic: with nothing to
-    // block, every defensive card past the first is a forced wasted placement.
-    const defenseCapped =
-      !wantParity &&
-      !underThreat &&
-      defenseSlots >= DEFENSE_CAP_WITHOUT_THREAT;
-
-    const wantOffenseFirst =
-      needOffenceFloor ||
-      (!wantParity &&
-        (defenseCapped ||
-          (slots === 0
-            ? offenseShare >= 0.5
-            : offenseSlots / slots < offenseShare)));
-    const primary = wantOffenseFirst ? OFFENSE_PREFERENCE : DEFENSE_PREFERENCE;
-    const secondary = wantOffenseFirst ? DEFENSE_PREFERENCE : OFFENSE_PREFERENCE;
-    // Fall back to the other role if the preferred one has nothing affordable,
-    // unless that fallback is the defence we just capped.
-    if (!tryBuy(primary) && (defenseCapped || !tryBuy(secondary))) break;
-  }
-
-  return [...counts.entries()].map(([patternIndex, count]) => ({
-    patternIndex,
-    count,
-  }));
-}
 
 export class SimRankingBotPolicy implements BotPolicy {
   private game: Game;
@@ -1094,41 +639,6 @@ export class SimRankingBotPolicy implements BotPolicy {
     return this.generateDefensiveCandidates(pattern, view);
   }
 
-  // Project where each witnessed opponent placement crosses the given column,
-  // most dangerous first. Returns intercept rows, not threat positions.
-  //
-  // Skipped: static pieces (weight 0 — an opponent's own block is not coming
-  // for anyone) and any trajectory that has left the grid by the time it
-  // reaches this column, which is a glider that dies against the top or
-  // bottom edge on the way over.
-  private projectInterceptRows(atCol: number, view: BotView): number[] {
-    const rows = this.game.rows;
-    const scored: { row: number; weight: number }[] = [];
-
-    for (const placement of view.opponentPlacements) {
-      const pattern = PATTERNS[placement.patternIndex];
-      if (!pattern) continue;
-
-      const { kind, rowPerCol } = pattern.movement;
-      const weight = THREAT_WEIGHT[kind] ?? 0;
-      if (weight === 0) continue;
-
-      // The opponent is P1, travelling towards increasing columns. A column
-      // already behind the threat is not on its path.
-      const colsToTravel = atCol - placement.col;
-      if (colsToTravel <= 0) continue;
-
-      const interceptRow =
-        patternSourceRow(pattern, placement.row) + rowPerCol * colsToTravel;
-      if (interceptRow < 0 || interceptRow >= rows) continue;
-
-      scored.push({ row: interceptRow, weight });
-    }
-
-    scored.sort((a, b) => b.weight - a.weight);
-    return scored.map((s) => s.row);
-  }
-
   // Rows of our own zone that already hold something — our earlier placements
   // this phase, plus any debris that carried over.
   private occupiedRowsInOwnZone(grid: boolean[][]): boolean[] {
@@ -1145,53 +655,11 @@ export class SimRankingBotPolicy implements BotPolicy {
     return occupied;
   }
 
-  // Rows worth defending at this column: observed first, projected second.
-  //
-  // Observed leads because it is the stronger signal for the threats nothing
-  // else can see — stationary wall debris keeps scoring in the same rows phase
-  // after phase, so where it scored last time is where it will score next.
-  //
-  // Projection covers what observation structurally cannot: a piece placed
-  // this phase, which has never scored and therefore appears nowhere in the
-  // previous phase's events.
-  private defensiveRowsFor(atCol: number, view: BotView): number[] {
-    return [
-      ...view.observedScoreRows,
-      ...this.projectMotionRows(atCol, view),
-      ...this.projectInterceptRows(atCol, view),
-    ];
-  }
-
-  // Where each observed mover crosses the given column, using the velocity
-  // measured from the frame diff rather than a table lookup. Same geometry as
-  // projectInterceptRows, but it needs no idea of *what* the thing is — which
-  // is the point, since some movers (a gun's glider stream) were never placed
-  // as a unit and have no pattern to look up.
-  private projectMotionRows(atCol: number, view: BotView): number[] {
-    const rows = this.game.rows;
-    const out: number[] = [];
-
-    for (const mover of view.observedMotion) {
-      // Travelling away from us, or not really travelling: not a threat.
-      if (mover.colsPerGen <= 0) continue;
-      const colsToTravel = atCol - mover.col;
-      if (colsToTravel <= 0) continue;
-
-      const interceptRow = Math.round(
-        mover.row + (mover.rowsPerGen / mover.colsPerGen) * colsToTravel,
-      );
-      // Leaves the board before it gets here — it dies against an edge.
-      if (interceptRow < 0 || interceptRow >= rows) continue;
-
-      out.push(interceptRow);
-    }
-    return out;
-  }
-
   // Threat-aware defensive shortlist. Most of the budget goes to rows where
-  // a witnessed threat actually crosses each candidate column; the rest stays
-  // a uniform scatter across the zone, so an unseen carry-over threat or a
-  // phase with no placements yet still yields usable candidates.
+  // a witnessed threat actually crosses each candidate column (observed and
+  // projected, see botThreat.ts); the rest stays a uniform scatter across the
+  // zone, so an unseen carry-over threat or a phase with no placements yet
+  // still yields usable candidates.
   //
   // The sim ranking in choosePlacement() remains the arbiter — this only
   // decides what gets offered to it. "Gut zielen, Sim richtet."
@@ -1237,7 +705,7 @@ export class SimRankingBotPolicy implements BotPolicy {
     // their best column before any single one gets its second-best.
     const rowsByCol = candidateCols.map((col) => ({
       col,
-      rows: this.defensiveRowsFor(col, view),
+      rows: defensiveRowsFor(col, view, rows),
     }));
     rowsByCol.reverse();
 

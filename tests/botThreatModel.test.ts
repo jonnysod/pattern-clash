@@ -8,12 +8,12 @@
 
 import { describe, it, expect } from "vitest";
 import { SimRankingBotPolicy } from "../src/botPolicy.js";
-import type { BotView, WitnessedPlacement } from "../src/botPolicy.js";
+import type { BotView, WitnessedPlacement } from "../src/botView.js";
 import { BotController } from "../src/botController.js";
 import { LocalSyncManager } from "../src/syncManager.js";
 import { PATTERNS } from "../src/patterns.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";
-import { BALANCED_PROFILE } from "../src/botPolicy.js";
+import { BALANCED_PROFILE } from "../src/botBuy.js";
 import { makeGame, BLOCK_INDEX, LWSS_INDEX } from "./_helpers.js";
 
 const MWSS_INDEX = 1;

@@ -16,7 +16,7 @@ import type {
   BotView,
   MovingThreat,
   WitnessedPlacement,
-} from "./botPolicy.js";
+} from "./botView.js";
 
 const BOT_PLACEMENT_DELAY_MS = 600;
 

@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import { RuleBasedBotPolicy, DummyBotPolicy } from "../src/botPolicy.js";
-import type { BotView } from "../src/botPolicy.js";
+import type { BotView } from "../src/botView.js";
 import { PATTERNS } from "../src/patterns.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";
 import { makeGame, LWSS_INDEX, BLOCK_INDEX } from "./_helpers.js";

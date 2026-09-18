@@ -12,7 +12,7 @@
 // the lower levels are practice targets, not characters.
 
 import type { Game } from "./game.js";
-import type { BotPolicy } from "./botPolicy.js";
+import type { BotPolicy } from "./botView.js";
 import {
   DummyBotPolicy,
   RuleBasedBotPolicy,
