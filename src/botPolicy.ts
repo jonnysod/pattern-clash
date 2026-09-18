@@ -10,8 +10,8 @@ import type { Card, Pattern } from "./types.js";
 import type { Game } from "./game.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer } from "./patternUtils.js";
-import { Engine } from "./engine.js";
 import type { BotPolicy, BotView, BuyBundle } from "./botView.js";
+import { peekNetScore } from "./botPeek.js";
 import { defensiveRowsFor, maxIncomingShips } from "./botThreat.js";
 import {
   BALANCED_PROFILE,
@@ -539,6 +539,15 @@ export class SimRankingBotPolicy implements BotPolicy {
       ? view.ownHand.filter((c) => !isOffensive(c))
       : view.ownHand;
 
+    // Fixed for the whole decision — the horizon getter reads the current
+    // phase's simGenerations once, and a phase cannot change mid-turn.
+    const peekEnv = {
+      rows: this.game.rows,
+      cols: this.game.cols,
+      zones: this.game.zones,
+      horizon: this.horizon,
+    };
+
     for (const card of playableHand) {
       const basePattern = PATTERNS[card.patternIndex];
       if (!basePattern) continue;
@@ -547,7 +556,7 @@ export class SimRankingBotPolicy implements BotPolicy {
       const candidates = this.generateShortlist(card, pattern, view);
       for (const { row, col } of candidates) {
         const key = [
-          this.peekNetScore(view.grid, pattern, row, col),
+          peekNetScore(view.grid, pattern, row, col, peekEnv),
           footprintOverlapsGrid(pattern, row, col, view.grid) ? 0 : 1,
           isClear(row) ? 1 : 0,
           -Math.abs(row - midRow), // higher = more central
@@ -761,59 +770,5 @@ export class SimRankingBotPolicy implements BotPolicy {
       }
     }
     return candidates;
-  }
-
-  // Headless peek: simulate the candidate placement forward on a grid
-  // clone, never touching the live game. Returns net score (own − opponent)
-  // for the candidate's own simulated outcome up to the horizon, or until
-  // the board stabilises (early termination), whichever comes first.
-  //
-  // Guardrails: operates on a fresh Engine + cloned grid only. Never reads
-  // or writes this.game.grid/scorePlayer*, never emits ScoreEvents to any
-  // UI listener, never touches _nextCardId, never sends a SyncAction.
-  private peekNetScore(
-    grid: boolean[][],
-    pattern: Pattern,
-    row: number,
-    col: number,
-  ): number {
-    const clone = grid.map((r) => r.slice());
-    for (const [dr, dc] of pattern.cells) {
-      const r = row + dr;
-      const c = col + dc;
-      if (r >= 0 && r < this.game.rows && c >= 0 && c < this.game.cols) {
-        clone[r]![c] = true;
-      }
-    }
-
-    const engine = new Engine(
-      this.game.rows,
-      this.game.cols,
-      this.game.zones,
-      this.horizon,
-    );
-    engine.grid = clone;
-
-    let ownScore = 0;
-    let opponentScore = 0;
-
-    while (!engine.isSimulationComplete()) {
-      const events = engine.computeNextGeneration();
-      for (const e of events) {
-        if (e.scorer === 2) ownScore += e.points;
-        else opponentScore += e.points;
-      }
-
-      if (engine.detectStablePeriod() !== 0) {
-        const flushed = engine.forceFlushBuckets();
-        for (const e of flushed) {
-          if (e.scorer === 2) ownScore += e.points;
-          else opponentScore += e.points;
-        }
-        break;
-      }
-    }
-
-    return ownScore - opponentScore;
   }
 }
