@@ -47,7 +47,10 @@ function stampGliderThreat(game: ReturnType<typeof makeGame>): void {
 // ---------------------------------------------------------------------------
 
 describe("SimRankingBotPolicy — defensive recall", () => {
-  it("blocks an incoming threat without any threat-detection rule", () => {
+  // Needs the full 200-gen horizon for the glider to reach the score column,
+  // so it cannot pin a small one. ~0.8 s locally, but CI runners measure
+  // ~4.5x slower — the explicit timeout keeps it off the 5 s default edge.
+  it("blocks an incoming threat without any threat-detection rule", { timeout: 30000 }, () => {
     const game = makeGame();
     stampGliderThreat(game);
 
@@ -576,7 +579,9 @@ describe("SimRankingBotPolicy — tie-break jitter", () => {
     expect(draw()).toEqual(draw());
   });
 
-  it("never samples past a ranking tier — a scoring move always wins", () => {
+  // Five full-horizon decisions (the ship needs ~126 gens to score): ~1.3 s
+  // locally, measured 6 s on a CI runner — over the 5 s default.
+  it("never samples past a ranking tier — a scoring move always wins", { timeout: 30000 }, () => {
     const game = makeGame();
     const hand = [{ id: "s1", patternIndex: LWSS_INDEX }];
 
