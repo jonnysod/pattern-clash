@@ -44,7 +44,8 @@ describe("P2 tuning — MWSS col 18, 60 initial gens", () => {
     expect(p2).toBeGreaterThan(100);
   });
 
-  it("2. Exhaustive search — best block still passes threshold 100", () => {
+  // 420 full runs: ~1.3 s locally, measured 5.5 s on a CI runner.
+  it("2. Exhaustive search — best block still passes threshold 100", { timeout: 30000 }, () => {
     const results: { row: number; col: number; p2: number }[] = [];
     for (let br = 0; br < ROWS; br++)
       for (let bc = 3; bc <= 16; bc++)
