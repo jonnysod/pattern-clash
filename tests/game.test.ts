@@ -153,6 +153,39 @@ describe("Game — Buy Logic", () => {
   });
 });
 
+describe("Game — Phase budget award", () => {
+  let game: Game;
+  beforeEach(() => {
+    game = makeGame();
+  });
+
+  it("phase 1: no award on top of the initial budget", () => {
+    game.awardPhaseBudget();
+    expect(game.getBudget(1)).toBe(INITIAL_BUDGET);
+    expect(game.getBudget(2)).toBe(INITIAL_BUDGET);
+  });
+
+  it("phase 2+: adds BUDGET_PER_PHASE to each player's leftover", () => {
+    game.currentPhaseNumber = 2;
+    game.budgetPlayer1 = 10;
+    game.budgetPlayer2 = 3;
+    game.awardPhaseBudget();
+    expect(game.getBudget(1)).toBe(10 + CONFIG.BUDGET_PER_PHASE);
+    expect(game.getBudget(2)).toBe(3 + CONFIG.BUDGET_PER_PHASE);
+  });
+
+  it("online: an opponent confirm that arrived early is not awarded twice", () => {
+    // The opponent finished simulating first, bought and confirmed. Their
+    // remainingBudget already includes this phase's award.
+    game.currentPhaseNumber = 2;
+    game.budgetPlayer1 = 10;
+    game.applyBuyConfirm(2, 3, 40);
+    game.awardPhaseBudget();
+    expect(game.getBudget(2)).toBe(40);
+    expect(game.getBudget(1)).toBe(10 + CONFIG.BUDGET_PER_PHASE);
+  });
+});
+
 describe("Game — Place Logic", () => {
   let game: Game;
   beforeEach(() => {

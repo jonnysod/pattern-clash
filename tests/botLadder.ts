@@ -28,7 +28,6 @@ import { Game } from "../src/game.js";
 import { BotController } from "../src/botController.js";
 import { createBotPolicy } from "../src/botDifficulty.js";
 import type { BotDifficultyLevel } from "../src/botDifficulty.js";
-import { CONFIG } from "../src/config.js";
 import { PATTERNS } from "../src/patterns.js";
 import type { Player, ScoreEvent, SyncAction } from "../src/types.js";
 import type { SyncManager } from "../src/syncManager.js";
@@ -250,10 +249,7 @@ export function runLadderGame(
 
   for (let phase = 1; phase <= game.totalPhases; phase++) {
     // --- Buy phase (mirrors ui.startBuyPhase) ---
-    if (phase > 1) {
-      game.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
-      game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
-    }
+    game.awardPhaseBudget();
     sideOf(1).controller.beginBuyPhase();
     sideOf(2).controller.beginBuyPhase();
 

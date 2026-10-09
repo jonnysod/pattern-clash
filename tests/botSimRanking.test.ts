@@ -288,10 +288,7 @@ describe("SimRankingBotPolicy — regression full game", () => {
     const controller = new BotController(game, syncManager, policy);
 
     for (let phase = 1; phase <= game.totalPhases; phase++) {
-      if (phase > 1) {
-        game.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
-        game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
-      }
+      game.awardPhaseBudget();
 
       game.buyPattern(1, BLOCK_INDEX);
       game.applyBuyConfirm(1, game.getSlotCount(1), game.getBudget(1));

@@ -6,7 +6,6 @@ import type { BotView } from "../src/botView.js";
 import { PATTERNS } from "../src/patterns.js";
 import { getPatternForPlayer } from "../src/patternUtils.js";
 import { makeGame, LWSS_INDEX, BLOCK_INDEX } from "./_helpers.js";
-import { CONFIG } from "../src/config.js";
 import { Game } from "../src/game.js";
 
 function makeView(game: Game): BotView {
@@ -133,10 +132,7 @@ describe("RuleBasedBotPolicy — regression full game", () => {
     const policy = new RuleBasedBotPolicy(game);
 
     for (let phase = 1; phase <= game.totalPhases; phase++) {
-      if (phase > 1) {
-        game.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
-        game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
-      }
+      game.awardPhaseBudget();
 
       // P1 buys a Block
       game.buyPattern(1, BLOCK_INDEX);
