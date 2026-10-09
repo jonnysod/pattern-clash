@@ -359,7 +359,7 @@ dom.lobbyBackBtn3.addEventListener("click", () => {
 });
 
 // Puzzle routing
-dom.miniGamesBtn.addEventListener("click", () => {
+dom.tutorialBtn.addEventListener("click", () => {
   showPuzzleSelect();
 });
 dom.puzzleSelectBackBtn.addEventListener("click", () => {

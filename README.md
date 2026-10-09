@@ -24,7 +24,7 @@ Draws are possible.
 - **Local** — hotseat on one device
 - **vs Bot** — an opponent that reads threats off the board and simulates its options before placing
 - **Online** — two browsers via a 4-character lobby code
-- **Mini Games** — standalone Conway puzzles with local best scores
+- **Tutorial** — standalone Conway puzzles with local best scores
 
 ## Tech
 

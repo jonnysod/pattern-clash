@@ -101,8 +101,8 @@ export function createDOMRefs() {
     botLevel4Btn: getElement<HTMLButtonElement>("botLevel4Btn"),
     lobbyBackBtn4: getElement<HTMLButtonElement>("lobbyBackBtn4"),
 
-    // Lobby: Mini Games entry point
-    miniGamesBtn: getElement<HTMLButtonElement>("miniGamesBtn"),
+    // Lobby: Tutorial (puzzle) entry point
+    tutorialBtn: getElement<HTMLButtonElement>("tutorialBtn"),
 
     // Puzzle selection overlay
     puzzleSelectOverlay: getElement<HTMLDivElement>("puzzleSelectOverlay"),
