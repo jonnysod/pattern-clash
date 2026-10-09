@@ -288,12 +288,7 @@ export class UIController {
 
   //#region Buy Phase
   private startBuyPhase(): void {
-    // Award budget for the new phase (phase 1 already has BUDGET_PER_PHASE
-    // from construction/reset; phases 2–5 add BUDGET_PER_PHASE to leftover).
-    if (this.game.currentPhaseNumber > 1) {
-      this.game.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
-      this.game.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
-    }
+    this.game.awardPhaseBudget();
 
     // Hotseat: both players buy on this client (sequentially).
     // Online: only the local player buys here; the opponent buys on

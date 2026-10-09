@@ -323,6 +323,22 @@ export class Game {
   }
   //#endregion
 
+  //#region Buy Phase: Budget Award
+  // Called once when a buy phase opens. Phase 1's budget is set by reset();
+  // phases 2+ add BUDGET_PER_PHASE to whatever was saved.
+  //
+  // A player whose buyConfirm already arrived is skipped: online, a faster
+  // opponent can finish simulating, buy and confirm while this client is
+  // still simulating, and that confirm carries their *final* budget
+  // (remainingBudget), award already included. Adding it again showed
+  // their budget 25 too high until their next confirm.
+  awardPhaseBudget(): void {
+    if (this.currentPhaseNumber <= 1) return;
+    if (!this.buyConfirmedPlayer1) this.budgetPlayer1 += CONFIG.BUDGET_PER_PHASE;
+    if (!this.buyConfirmedPlayer2) this.budgetPlayer2 += CONFIG.BUDGET_PER_PHASE;
+  }
+  //#endregion
+
   //#region Buy Phase: Confirmation
   isBuyConfirmed(player: Player): boolean {
     return player === 1 ? this.buyConfirmedPlayer1 : this.buyConfirmedPlayer2;
