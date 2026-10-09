@@ -125,6 +125,13 @@ export class UIController {
     return this.localPlayer === "both";
   }
 
+  // Quitting mid-game is only offered where nobody else is affected:
+  // hotseat and vs-bot. Online, surrender is the way out — it tells the
+  // opponent the game is over instead of leaving them waiting.
+  private canQuitToMenu(): boolean {
+    return this.isHotseat() || this.botController !== null;
+  }
+
   private isLocalPlayer(player: Player): boolean {
     return this.localPlayer === "both" || this.localPlayer === player;
   }
@@ -148,6 +155,16 @@ export class UIController {
 
     this.listen(this.dom.switchOverlayReadyBtn, "click", () =>
       this.onSwitchReady(),
+    );
+
+    // The menu buttons are persistent DOM shared with online games, so the
+    // visibility is re-decided on every construction, not just set once.
+    const menuDisplay = this.canQuitToMenu() ? "block" : "none";
+    this.dom.buyOverlayMenuBtn.style.display = menuDisplay;
+    this.dom.switchOverlayMenuBtn.style.display = menuDisplay;
+    this.listen(this.dom.buyOverlayMenuBtn, "click", () => this.quitToMenu());
+    this.listen(this.dom.switchOverlayMenuBtn, "click", () =>
+      this.quitToMenu(),
     );
 
     this.listen(this.dom.surrender1Btn, "click", () => this.handleSurrender(1));
@@ -177,6 +194,39 @@ export class UIController {
     this.listen(this.dom.gameCanvas, "click", (e) =>
       this.onCanvasClick(e as MouseEvent),
     );
+  }
+
+  // Nothing to lose yet: first buy screen of the game, no purchase
+  // confirmed by anyone. Leaving is then just "go back", not "abort".
+  private hasGameProgress(): boolean {
+    return (
+      this.game.currentPhaseNumber > 1 ||
+      this.game.isBuyConfirmed(1) ||
+      this.game.isBuyConfirmed(2)
+    );
+  }
+
+  // Label follows the cost of leaving — called whenever an overlay that
+  // carries a menu button is shown.
+  private refreshMenuButtons(): void {
+    const label = this.hasGameProgress() ? "Quit (Menu)" : "← Menu";
+    this.dom.buyOverlayMenuBtn.textContent = label;
+    this.dom.switchOverlayMenuBtn.textContent = label;
+  }
+
+  private quitToMenu(): void {
+    if (!this.canQuitToMenu()) return;
+    if (
+      this.hasGameProgress() &&
+      !window.confirm("Quit to menu? The current game will be lost.")
+    ) {
+      return;
+    }
+    this.buyOverlay.hide();
+    this.dom.switchOverlay.style.display = "none";
+    this.cleanup();
+    logInfo("[Game] Quit to menu.");
+    if (this.onRestartRequested) this.onRestartRequested();
   }
 
   private cleanup(): void {
@@ -264,6 +314,7 @@ export class UIController {
       nextPlayer === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
     this.dom.switchOverlayTitle.textContent = `Pass the device to Player ${nextPlayer}`;
     this.dom.switchOverlayTitle.style.color = color;
+    this.refreshMenuButtons();
     this.dom.switchOverlay.style.display = "flex";
   }
 
@@ -276,6 +327,7 @@ export class UIController {
   }
 
   private showBuyOverlay(player: Player): void {
+    this.refreshMenuButtons();
     this.buyOverlay.show(player);
   }
 

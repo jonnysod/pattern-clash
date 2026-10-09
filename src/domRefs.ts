@@ -58,12 +58,16 @@ export function createDOMRefs() {
     ),
     buyOverlayPatternList: getElement<HTMLDivElement>("buyOverlayPatternList"),
     buyOverlayConfirmBtn: getElement<HTMLButtonElement>("buyOverlayConfirmBtn"),
+    buyOverlayMenuBtn: getElement<HTMLButtonElement>("buyOverlayMenuBtn"),
 
     // Hotseat switch overlay
     switchOverlay: getElement<HTMLDivElement>("switchOverlay"),
     switchOverlayTitle: getElement<HTMLHeadingElement>("switchOverlayTitle"),
     switchOverlayReadyBtn: getElement<HTMLButtonElement>(
       "switchOverlayReadyBtn",
+    ),
+    switchOverlayMenuBtn: getElement<HTMLButtonElement>(
+      "switchOverlayMenuBtn",
     ),
 
     // Winner overlay
