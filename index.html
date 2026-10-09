@@ -140,23 +140,42 @@
               style="display: none; margin-left: 10px; color: #ffaa00"
               >⚡ Stable</span
             >
-          </div>
-          <div id="freerunBar" style="display: none; margin-top: 6px">
             <button
-              id="freerunPlayBtn"
+              id="pauseBtn"
+              title="Pause / resume (Space)"
               style="
-                padding: 6px 20px;
-                font-size: 13px;
-                background-color: #336633;
-                color: white;
-                border: none;
+                display: none;
+                margin-left: 10px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
                 border-radius: 4px;
                 cursor: pointer;
-                margin-right: 8px;
               "
             >
-              ▶ Play
+              ⏸ Pause
             </button>
+            <button
+              id="stepBtn"
+              title="One generation forward (→)"
+              style="
+                display: none;
+                margin-left: 4px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              ⏭ +1
+            </button>
+          </div>
+          <div id="freerunBar" style="display: none; margin-top: 6px">
             <span id="freerunStatus" style="font-size: 13px; color: #aaaaaa"
               >Paused — inspect the final board</span
             >
@@ -930,6 +949,40 @@
               style="display: none; margin-left: 8px; color: #ffaa00"
               >⚡ Stable</span
             >
+            <button
+              id="puzzlePauseBtn"
+              title="Pause / resume (Space)"
+              style="
+                display: none;
+                margin-left: 8px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              ⏸ Pause
+            </button>
+            <button
+              id="puzzleStepBtn"
+              title="One generation forward (→)"
+              style="
+                display: none;
+                margin-left: 4px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              ⏭ +1
+            </button>
             &nbsp;·&nbsp; Your score:
             <span id="puzzleOwnScore" style="color: #00ff88">0</span>
             &nbsp;·&nbsp; Opponent score:

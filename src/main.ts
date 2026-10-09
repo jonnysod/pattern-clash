@@ -129,6 +129,8 @@ function buildPuzzleDOMRefs(): PuzzleDOMRefs {
     generationCounter: dom.puzzleGenerationCounter,
     maxGenerations: dom.puzzleMaxGenerations,
     simSkipHint: dom.puzzleSimSkipHint,
+    pauseBtn: dom.puzzlePauseBtn,
+    stepBtn: dom.puzzleStepBtn,
     ownScore: dom.puzzleOwnScore,
     opponentScore: dom.puzzleOpponentScore,
     resultOverlay: dom.puzzleResultOverlay,

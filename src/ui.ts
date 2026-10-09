@@ -24,6 +24,7 @@ import { ScoreEffects } from "./scoreEffects.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
+import { PauseGate, isPauseKey, isStepKey } from "./pauseGate.js";
 import { logInfo, logWarn } from "./logger.js";
 
 export type LocalPlayerMode = Player | "both";
@@ -58,10 +59,15 @@ export class UIController {
   // during the hold — otherwise it fires onSimulationComplete() on an
   // already-ended game and re-opens the buy overlay (zombie restart).
   private skipHoldTimerId: number | null = null;
+  // Every sim timer callback passes through this gate (see pauseGate.ts).
+  private pauseGate = new PauseGate();
 
   // Post-game freerun sandbox
   private freerunTimerId: number | null = null;
   private freerunPlaying: boolean = false;
+  // True from "Show Board" until restart: the pause/step controls then
+  // drive the freerun instead of the (finished) simulation.
+  private freerunActive: boolean = false;
 
   // Registry of every addEventListener wired by this controller. Buttons like
   // surrender/restart/show-board live outside this controller's own DOM subtree
@@ -132,6 +138,12 @@ export class UIController {
     return this.isHotseat() || this.botController !== null;
   }
 
+  // Pause only where it can't desync anyone: both clients simulate
+  // independently online, a one-sided pause would just drift them apart.
+  private canPause(): boolean {
+    return this.game.isSimulation && this.canQuitToMenu();
+  }
+
   private isLocalPlayer(player: Player): boolean {
     return this.localPlayer === "both" || this.localPlayer === player;
   }
@@ -167,6 +179,23 @@ export class UIController {
       this.quitToMenu(),
     );
 
+    // One control pair for both the running simulation and the post-game
+    // freerun, so the two can't drift apart in look or keys.
+    this.pauseGate.onChange = (paused) => this.showPauseControls(paused);
+    this.listen(this.dom.pauseBtn, "click", () => this.onPauseControl());
+    this.listen(this.dom.stepBtn, "click", () => this.onStepControl());
+    this.listen(window, "keydown", (e) => {
+      const key = e as KeyboardEvent;
+      if (!this.canPause() && !this.freerunActive) return;
+      if (isPauseKey(key)) {
+        key.preventDefault();
+        this.onPauseControl();
+      } else if (isStepKey(key)) {
+        key.preventDefault();
+        this.onStepControl();
+      }
+    });
+
     this.listen(this.dom.surrender1Btn, "click", () => this.handleSurrender(1));
     this.listen(this.dom.surrender2Btn, "click", () => this.handleSurrender(2));
 
@@ -177,12 +206,13 @@ export class UIController {
     });
     this.listen(this.dom.restartBtn, "click", () => {
       this.stopFreerun();
+      this.freerunActive = false;
+      this.hidePauseControls();
       this.dom.freerunBar.style.display = "none";
       this.dom.winnerOverlay.style.display = "none";
       this.cleanup();
       if (this.onRestartRequested) this.onRestartRequested();
     });
-    this.listen(this.dom.freerunPlayBtn, "click", () => this.toggleFreerun());
 
     // Canvas mouse tracking for ghost preview + placement click
     this.listen(this.dom.gameCanvas, "mousemove", (e) =>
@@ -584,6 +614,7 @@ export class UIController {
   private startSimulation(): void {
     this.stopSimulation();
     this.botController?.beginSimulationRecording();
+    if (this.canPause()) this.showPauseControls(false);
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
     const tick = () => {
       if (!this.game.isSimulation) return;
@@ -607,14 +638,23 @@ export class UIController {
       // Early-termination: stable grid with no scoring activity.
       const period = this.game.detectStablePeriod();
       if (period === 1 || period === 2) {
-        this.stopSimulation();
+        // Not stopSimulation(): the sim isn't over until the hold below has
+        // run, and the player can still pause during it. The tick timer has
+        // already fired, so there is nothing to cancel.
+        this.simTimerId = null;
         this.onStabilitySkip(period);
         return;
       }
 
-      this.simTimerId = window.setTimeout(tick, tickMs);
+      this.simTimerId = window.setTimeout(
+        () => this.pauseGate.run(tick),
+        tickMs,
+      );
     };
-    this.simTimerId = window.setTimeout(tick, tickMs);
+    this.simTimerId = window.setTimeout(
+      () => this.pauseGate.run(tick),
+      tickMs,
+    );
   }
 
   // Called when the engine detects a stable period with no pending score hits.
@@ -651,13 +691,18 @@ export class UIController {
     // the game without going through stopSimulation().
     this.skipHoldTimerId = window.setTimeout(() => {
       this.skipHoldTimerId = null;
-      if (this.game.isEnded) return;
-      this.dom.simSkipHint.style.display = "none";
-      this.onSimulationComplete();
+      this.pauseGate.run(() => {
+        if (this.game.isEnded) return;
+        this.dom.simSkipHint.style.display = "none";
+        this.stopSimulation();
+        this.onSimulationComplete();
+      });
     }, UIController.STABILITY_SKIP_HOLD_MS);
   }
 
   private stopSimulation(): void {
+    this.pauseGate.reset();
+    this.hidePauseControls();
     if (this.simTimerId !== null) {
       clearTimeout(this.simTimerId);
       this.simTimerId = null;
@@ -669,11 +714,36 @@ export class UIController {
   }
   //#endregion
 
+  //#region Pause / step controls
+  private showPauseControls(paused: boolean): void {
+    this.dom.pauseBtn.style.display = "inline-block";
+    this.dom.pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+    // Stepping only makes sense on a stopped board.
+    this.dom.stepBtn.style.display = paused ? "inline-block" : "none";
+  }
+
+  private hidePauseControls(): void {
+    this.dom.pauseBtn.style.display = "none";
+    this.dom.stepBtn.style.display = "none";
+  }
+
+  private onPauseControl(): void {
+    if (this.freerunActive) this.toggleFreerun();
+    else if (this.canPause()) this.pauseGate.toggle();
+  }
+
+  private onStepControl(): void {
+    if (this.freerunActive) this.stepFreerun();
+    else if (this.canPause()) this.pauseGate.step();
+  }
+  //#endregion
+
   //#region Freerun (post-game sandbox)
   private static readonly FREERUN_STABLE_HOLD_MS = 500;
 
   // Called by "Show Board" — reveals the frozen end-board and arms the freerun UI.
   private enterFreerun(): void {
+    this.freerunActive = true;
     this.dom.freerunBar.style.display = "block";
     this.setFreerunPaused();
   }
@@ -689,18 +759,12 @@ export class UIController {
   private startFreerun(): void {
     if (this.freerunPlaying) return;
     this.freerunPlaying = true;
-    this.dom.freerunPlayBtn.textContent = "⏸ Pause";
+    this.showPauseControls(false);
     this.dom.freerunStatus.textContent = "Running…";
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
     const tick = () => {
       if (!this.freerunPlaying) return;
-      // Score-free tick — no hit-detection, no buckets, no ScoreEvents.
-      this.game.stepOnly();
-      this.renderer.drawGrid();
-      this.updateStatusBar();
-
-      const period = this.game.detectStablePeriod();
-      if (period === 1 || period === 2) {
+      if (this.freerunTick()) {
         // Auto-pause on stability.
         this.stopFreerun();
         this.dom.freerunStatus.textContent = "⚡ Stable";
@@ -708,7 +772,7 @@ export class UIController {
           () => {
             if (!this.freerunPlaying) {
               this.dom.freerunStatus.textContent =
-                "Paused — press Play to continue";
+                "Paused — press Resume to continue";
             }
           },
           UIController.FREERUN_STABLE_HOLD_MS,
@@ -730,8 +794,28 @@ export class UIController {
     this.setFreerunPaused();
   }
 
+  // Score-free tick — no hit-detection, no buckets, no ScoreEvents.
+  // Returns true once the board is stable.
+  private freerunTick(): boolean {
+    this.game.stepOnly();
+    this.renderer.drawGrid();
+    this.updateStatusBar();
+    const period = this.game.detectStablePeriod();
+    return period === 1 || period === 2;
+  }
+
+  private stepFreerun(): void {
+    if (this.freerunPlaying) return;
+    const stable = this.freerunTick();
+    this.dom.freerunStatus.textContent = stable
+      ? "⚡ Stable"
+      : "Paused — inspect the final board";
+  }
+
   private setFreerunPaused(): void {
-    this.dom.freerunPlayBtn.textContent = "▶ Play";
+    // stopFreerun() also runs from cleanup paths after the freerun is over;
+    // only an active freerun gets its controls back.
+    if (this.freerunActive) this.showPauseControls(true);
     this.dom.freerunStatus.textContent = "Paused — inspect the final board";
   }
   //#endregion

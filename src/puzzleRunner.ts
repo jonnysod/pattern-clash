@@ -23,6 +23,7 @@ import { PATTERNS } from "./patterns.js";
 import { mirrorPatternHorizontal, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 import { logInfo, logWarn } from "./logger.js";
+import { PauseGate, isPauseKey, isStepKey } from "./pauseGate.js";
 import { PUZZLE_ZONE_CONFIG, PUZZLE_ZONE_CONFIG_L } from "./puzzles.js";
 import { getBestScore, recordScore } from "./puzzleHighscores.js";
 
@@ -37,6 +38,8 @@ export interface PuzzleDOMRefs {
   generationCounter: HTMLSpanElement;
   maxGenerations: HTMLSpanElement;
   simSkipHint: HTMLSpanElement;
+  pauseBtn: HTMLButtonElement;
+  stepBtn: HTMLButtonElement;
   ownScore: HTMLSpanElement;
   opponentScore: HTMLSpanElement;
   resultOverlay: HTMLDivElement;
@@ -169,6 +172,9 @@ export class PuzzleRunner {
   // invisibly (Back) or jumps the freshly-started timeline forward (Retry).
   private segmentHoldTimerId: number | null = null; // flushAndAdvance → next entry
   private skipHintTimerId: number | null = null; // onStabilitySkip hint hide
+  // Sim tick and segment hold pass through this gate (see pauseGate.ts).
+  // The hint-hide timer doesn't: it is cosmetic and runs in parallel.
+  private pauseGate = new PauseGate();
 
   // Place phase
   private currentHand: Card[] = [];
@@ -198,6 +204,22 @@ export class PuzzleRunner {
 
   constructor(dom: PuzzleDOMRefs) {
     this.dom = dom;
+
+    // The runner is created once and reused for every puzzle and retry, so
+    // these listeners are wired exactly once and never stack.
+    this.pauseGate.onChange = (paused) => this.showPauseControls(paused);
+    this.dom.pauseBtn.addEventListener("click", () => this.pauseGate.toggle());
+    this.dom.stepBtn.addEventListener("click", () => this.pauseGate.step());
+    window.addEventListener("keydown", (e) => {
+      if (this.state !== "simulating") return;
+      if (isPauseKey(e)) {
+        e.preventDefault();
+        this.pauseGate.toggle();
+      } else if (isStepKey(e)) {
+        e.preventDefault();
+        this.pauseGate.step();
+      }
+    });
   }
 
   start(puzzle: PuzzleDefinition): void {
@@ -227,6 +249,7 @@ export class PuzzleRunner {
   // and start() (Retry) so no timer from a previous run survives into the next.
   private clearPendingTimers(): void {
     this.stopSimulation();
+    this.endPauseableSegment();
     if (this.segmentHoldTimerId !== null) {
       clearTimeout(this.segmentHoldTimerId);
       this.segmentHoldTimerId = null;
@@ -336,13 +359,17 @@ export class PuzzleRunner {
     this.genDisplayOffset = this.engine.currentGeneration;
     this.simGenTarget = this.engine.currentGeneration + generations;
     this.updateGenerationCounter();
+    this.showPauseControls(false);
     logInfo(`[Puzzle] simulate ${generations} gens (target gen ${this.simGenTarget})`);
     this.scheduleSimTick();
   }
 
   private scheduleSimTick(): void {
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
-    this.simTimerId = window.setTimeout(() => this.simTick(), tickMs);
+    this.simTimerId = window.setTimeout(
+      () => this.pauseGate.run(() => this.simTick()),
+      tickMs,
+    );
   }
 
   private simTick(): void {
@@ -440,9 +467,27 @@ export class PuzzleRunner {
     // an orphaned callback from advancing the timeline of an aborted run.
     this.segmentHoldTimerId = window.setTimeout(() => {
       this.segmentHoldTimerId = null;
-      if (this.state !== "simulating") return;
-      this.runNextTimelineEntry();
+      this.pauseGate.run(() => {
+        if (this.state !== "simulating") return;
+        this.endPauseableSegment();
+        this.runNextTimelineEntry();
+      });
     }, PuzzleRunner.SEGMENT_END_HOLD_MS);
+  }
+
+  // The segment (ticks + end hold) is over: drop any pause and hide the
+  // button. Not part of stopSimulation(), which also runs between the last
+  // tick and the hold — the player can still pause during the hold.
+  private endPauseableSegment(): void {
+    this.pauseGate.reset();
+    this.dom.pauseBtn.style.display = "none";
+    this.dom.stepBtn.style.display = "none";
+  }
+
+  private showPauseControls(paused: boolean): void {
+    this.dom.pauseBtn.style.display = "inline-block";
+    this.dom.pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+    this.dom.stepBtn.style.display = paused ? "inline-block" : "none";
   }
 
   private stopSimulation(): void {

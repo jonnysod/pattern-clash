@@ -32,10 +32,11 @@ export function createDOMRefs() {
     generationCounter: getElement<HTMLSpanElement>("generationCounter"),
     maxGenerations: getElement<HTMLSpanElement>("maxGenerations"),
     simSkipHint: getElement<HTMLSpanElement>("simSkipHint"),
+    pauseBtn: getElement<HTMLButtonElement>("pauseBtn"),
+    stepBtn: getElement<HTMLButtonElement>("stepBtn"),
 
     // Post-game freerun sandbox controls
     freerunBar: getElement<HTMLDivElement>("freerunBar"),
-    freerunPlayBtn: getElement<HTMLButtonElement>("freerunPlayBtn"),
     freerunStatus: getElement<HTMLSpanElement>("freerunStatus"),
 
     // Card hand containers (below canvas, one per player)
@@ -123,6 +124,8 @@ export function createDOMRefs() {
     ),
     puzzleMaxGenerations: getElement<HTMLSpanElement>("puzzleMaxGenerations"),
     puzzleSimSkipHint: getElement<HTMLSpanElement>("puzzleSimSkipHint"),
+    puzzlePauseBtn: getElement<HTMLButtonElement>("puzzlePauseBtn"),
+    puzzleStepBtn: getElement<HTMLButtonElement>("puzzleStepBtn"),
     puzzleOwnScore: getElement<HTMLSpanElement>("puzzleOwnScore"),
     puzzleOpponentScore: getElement<HTMLSpanElement>("puzzleOpponentScore"),
     puzzleCanvas: getElement<HTMLCanvasElement>("puzzleCanvas"),
