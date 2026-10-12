@@ -24,7 +24,8 @@ import { ScoreEffects } from "./scoreEffects.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
-import { PauseGate, isPauseKey, isStepKey } from "./pauseGate.js";
+import { PauseGate, isPauseKey, isStepKey, isBackKey } from "./pauseGate.js";
+import { FrameHistory } from "./frameHistory.js";
 import { logInfo, logWarn } from "./logger.js";
 
 export type LocalPlayerMode = Player | "both";
@@ -61,6 +62,8 @@ export class UIController {
   private skipHoldTimerId: number | null = null;
   // Every sim timer callback passes through this gate (see pauseGate.ts).
   private pauseGate = new PauseGate();
+  // Last frames of the running sim / freerun for the view-only rewind.
+  private history = new FrameHistory(CONFIG.REWIND_GENERATIONS);
 
   // Post-game freerun sandbox
   private freerunTimerId: number | null = null;
@@ -184,6 +187,7 @@ export class UIController {
     this.pauseGate.onChange = (paused) => this.showPauseControls(paused);
     this.listen(this.dom.pauseBtn, "click", () => this.onPauseControl());
     this.listen(this.dom.stepBtn, "click", () => this.onStepControl());
+    this.listen(this.dom.backBtn, "click", () => this.onBackControl());
     this.listen(window, "keydown", (e) => {
       const key = e as KeyboardEvent;
       if (!this.canPause() && !this.freerunActive) return;
@@ -193,6 +197,9 @@ export class UIController {
       } else if (isStepKey(key)) {
         key.preventDefault();
         this.onStepControl();
+      } else if (isBackKey(key)) {
+        key.preventDefault();
+        this.onBackControl();
       }
     });
 
@@ -609,11 +616,14 @@ export class UIController {
   private startSimulation(): void {
     this.stopSimulation();
     this.botController?.beginSimulationRecording();
+    this.history.clear();
+    this.recordFrame();
     if (this.canPause()) this.showPauseControls(false);
     const tickMs = Math.floor(1000 / CONFIG.FPS_FAST);
     const tick = () => {
       if (!this.game.isSimulation) return;
       this.game.computeNextGeneration();
+      this.recordFrame();
       this.scoreEffects.feed(this.game.scoreEvents);
       this.botController?.recordScoreEvents(this.game.scoreEvents);
       this.botController?.recordSimulationFrame(
@@ -667,6 +677,7 @@ export class UIController {
     // Same invariant as the floaters: every path that produces events has to
     // report them, or the bot goes blind to whatever scored during the skip.
     this.botController?.recordScoreEvents(events);
+    this.recordFrame();
     this.updateBudgetScoreDisplay();
     this.updateStatusBar();
 
@@ -698,6 +709,11 @@ export class UIController {
   private stopSimulation(): void {
     this.pauseGate.reset();
     this.hidePauseControls();
+    // Ended while rewound (surrender, quit): don't leave an old frame up.
+    if (this.history.isViewingHistory) {
+      this.history.toLive();
+      this.renderHistoryView();
+    }
     if (this.simTimerId !== null) {
       clearTimeout(this.simTimerId);
       this.simTimerId = null;
@@ -713,23 +729,93 @@ export class UIController {
   private showPauseControls(paused: boolean): void {
     this.dom.pauseBtn.style.display = "inline-block";
     this.dom.pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
-    // Stepping only makes sense on a stopped board.
-    this.dom.stepBtn.style.display = paused ? "inline-block" : "none";
+    // Stepping and rewinding only make sense on a stopped board.
+    const stepDisplay = paused ? "inline-block" : "none";
+    this.dom.stepBtn.style.display = stepDisplay;
+    this.dom.backBtn.style.display = stepDisplay;
+    // The range shows from the moment of pausing, not only once rewound:
+    // appearing on the first back step would re-center the status line
+    // right at the live/history boundary, mid-stepping.
+    this.dom.historyRange.style.display = paused ? "inline-block" : "none";
+    this.updateHistoryDisplay();
   }
 
   private hidePauseControls(): void {
     this.dom.pauseBtn.style.display = "none";
     this.dom.stepBtn.style.display = "none";
+    this.dom.backBtn.style.display = "none";
+    this.dom.historyRange.style.display = "none";
+    this.dom.generationCounter.style.color = "";
+  }
+
+  // Paused simulation or paused freerun — the states where step/back apply.
+  private isStopped(): boolean {
+    if (this.freerunActive) return !this.freerunPlaying;
+    return this.canPause() && this.pauseGate.isPaused;
   }
 
   private onPauseControl(): void {
+    // Resuming always continues from the live board, never from a
+    // rewound frame.
+    if (this.history.isViewingHistory) {
+      this.history.toLive();
+      this.renderHistoryView();
+    }
     if (this.freerunActive) this.toggleFreerun();
     else if (this.canPause()) this.pauseGate.toggle();
   }
 
   private onStepControl(): void {
+    if (this.isStopped() && this.history.forward()) {
+      this.renderHistoryView();
+      return;
+    }
     if (this.freerunActive) this.stepFreerun();
     else if (this.canPause()) this.pauseGate.step();
+  }
+
+  private onBackControl(): void {
+    if (this.isStopped() && this.history.back()) this.renderHistoryView();
+  }
+
+  private recordFrame(): void {
+    this.history.record(
+      this.game.currentGeneration,
+      this.game.grid,
+      this.game.scorePlayer1,
+      this.game.scorePlayer2,
+    );
+    this.updateHistoryDisplay();
+  }
+
+  // Range text, rewound-colour of the counter and back-button state —
+  // everything that depends on the history buffer, not on the frame shown.
+  private updateHistoryDisplay(): void {
+    const range = this.history.range;
+    this.dom.historyRange.textContent = range
+      ? `(${range.oldest}–${range.live})`
+      : "";
+    this.dom.generationCounter.style.color = this.history.isViewingHistory
+      ? CONFIG.COLOR_REWIND
+      : "";
+    this.dom.backBtn.disabled = !this.history.canGoBack;
+  }
+
+  // Show the frame the history points at: a rewound one (grid, generation
+  // and scores of that moment, plus the hint), or the live board.
+  private renderHistoryView(): void {
+    const frame = this.history.current();
+    if (this.history.isViewingHistory && frame) {
+      this.renderer.drawGrid(frame.grid);
+      this.dom.generationCounter.textContent = String(frame.generation);
+      this.dom.score1.textContent = String(frame.score1);
+      this.dom.score2.textContent = String(frame.score2);
+    } else {
+      this.renderer.drawGrid();
+      this.updateStatusBar();
+      this.updateBudgetScoreDisplay();
+    }
+    this.updateHistoryDisplay();
   }
   //#endregion
 
@@ -739,6 +825,8 @@ export class UIController {
   // Called by "Show Board" — reveals the frozen end-board and arms the freerun UI.
   private enterFreerun(): void {
     this.freerunActive = true;
+    this.history.clear();
+    this.recordFrame();
     this.dom.freerunBar.style.display = "block";
     this.setFreerunPaused();
   }
@@ -793,6 +881,7 @@ export class UIController {
   // Returns true once the board is stable.
   private freerunTick(): boolean {
     this.game.stepOnly();
+    this.recordFrame();
     this.renderer.drawGrid();
     this.updateStatusBar();
     const period = this.game.detectStablePeriod();

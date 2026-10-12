@@ -30,7 +30,9 @@ export class Renderer {
     this.zoneRects = source.zones.getRenderRects();
   }
 
-  drawGrid(): void {
+  // `grid` overrides the source's live grid — used to show a rewound frame
+  // (see frameHistory.ts) without touching the engine.
+  drawGrid(grid: boolean[][] = this.source.grid): void {
     const cs = this.cellSize;
     const ctx = this.ctx;
 
@@ -46,7 +48,7 @@ export class Renderer {
     ctx.fillStyle = CONFIG.COLOR_CELL;
     for (let row = 0; row < this.source.rows; row++) {
       for (let col = 0; col < this.source.cols; col++) {
-        if (this.source.grid[row]![col]) {
+        if (grid[row]![col]) {
           ctx.fillRect(col * cs, row * cs, cs - 1, cs - 1);
         }
       }

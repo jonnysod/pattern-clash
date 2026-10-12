@@ -23,7 +23,8 @@ import { PATTERNS } from "./patterns.js";
 import { mirrorPatternHorizontal, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
 import { logInfo, logWarn } from "./logger.js";
-import { PauseGate, isPauseKey, isStepKey } from "./pauseGate.js";
+import { PauseGate, isPauseKey, isStepKey, isBackKey } from "./pauseGate.js";
+import { FrameHistory } from "./frameHistory.js";
 import { PUZZLE_ZONE_CONFIG, PUZZLE_ZONE_CONFIG_L } from "./puzzles.js";
 import { getBestScore, recordScore } from "./puzzleHighscores.js";
 
@@ -40,6 +41,8 @@ export interface PuzzleDOMRefs {
   simSkipHint: HTMLSpanElement;
   pauseBtn: HTMLButtonElement;
   stepBtn: HTMLButtonElement;
+  backStepBtn: HTMLButtonElement;
+  historyRange: HTMLSpanElement;
   ownScore: HTMLSpanElement;
   opponentScore: HTMLSpanElement;
   resultOverlay: HTMLDivElement;
@@ -175,6 +178,8 @@ export class PuzzleRunner {
   // Sim tick and segment hold pass through this gate (see pauseGate.ts).
   // The hint-hide timer doesn't: it is cosmetic and runs in parallel.
   private pauseGate = new PauseGate();
+  // Last frames of the running segment for the view-only rewind.
+  private history = new FrameHistory(CONFIG.REWIND_GENERATIONS);
 
   // Place phase
   private currentHand: Card[] = [];
@@ -208,16 +213,20 @@ export class PuzzleRunner {
     // The runner is created once and reused for every puzzle and retry, so
     // these listeners are wired exactly once and never stack.
     this.pauseGate.onChange = (paused) => this.showPauseControls(paused);
-    this.dom.pauseBtn.addEventListener("click", () => this.pauseGate.toggle());
-    this.dom.stepBtn.addEventListener("click", () => this.pauseGate.step());
+    this.dom.pauseBtn.addEventListener("click", () => this.onPauseControl());
+    this.dom.stepBtn.addEventListener("click", () => this.onStepControl());
+    this.dom.backStepBtn.addEventListener("click", () => this.onBackControl());
     window.addEventListener("keydown", (e) => {
       if (this.state !== "simulating") return;
       if (isPauseKey(e)) {
         e.preventDefault();
-        this.pauseGate.toggle();
+        this.onPauseControl();
       } else if (isStepKey(e)) {
         e.preventDefault();
-        this.pauseGate.step();
+        this.onStepControl();
+      } else if (isBackKey(e)) {
+        e.preventDefault();
+        this.onBackControl();
       }
     });
   }
@@ -359,6 +368,8 @@ export class PuzzleRunner {
     this.genDisplayOffset = this.engine.currentGeneration;
     this.simGenTarget = this.engine.currentGeneration + generations;
     this.updateGenerationCounter();
+    this.history.clear();
+    this.recordFrame();
     this.showPauseControls(false);
     logInfo(`[Puzzle] simulate ${generations} gens (target gen ${this.simGenTarget})`);
     this.scheduleSimTick();
@@ -378,6 +389,7 @@ export class PuzzleRunner {
     const events = this.engine.computeNextGeneration();
     this.scoreEffects?.feed(events);
     this.creditEvents(events);
+    this.recordFrame();
     this.renderer.drawGrid();
     this.updateGenerationCounter();
     this.updateScores();
@@ -412,6 +424,7 @@ export class PuzzleRunner {
     const events = this.engine.skipToGeneration(target, period);
     this.scoreEffects?.feed(events);
     this.creditEvents(events);
+    this.recordFrame();
     this.updateScores();
     this.updateGenerationCounter();
 
@@ -480,14 +493,93 @@ export class PuzzleRunner {
   // tick and the hold — the player can still pause during the hold.
   private endPauseableSegment(): void {
     this.pauseGate.reset();
+    if (this.history.isViewingHistory) {
+      this.history.toLive();
+      this.renderHistoryView();
+    }
+    this.history.clear();
     this.dom.pauseBtn.style.display = "none";
     this.dom.stepBtn.style.display = "none";
+    this.dom.backStepBtn.style.display = "none";
+    this.dom.historyRange.style.display = "none";
+    this.dom.generationCounter.style.color = "";
   }
 
   private showPauseControls(paused: boolean): void {
     this.dom.pauseBtn.style.display = "inline-block";
     this.dom.pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
-    this.dom.stepBtn.style.display = paused ? "inline-block" : "none";
+    const stepDisplay = paused ? "inline-block" : "none";
+    this.dom.stepBtn.style.display = stepDisplay;
+    this.dom.backStepBtn.style.display = stepDisplay;
+    // Visible from the moment of pausing — see UIController.showPauseControls.
+    this.dom.historyRange.style.display = paused ? "inline-block" : "none";
+    this.updateHistoryDisplay();
+  }
+
+  // Same control semantics as the main game (UIController): resume always
+  // continues live, step walks a rewound view forward before simulating.
+  private onPauseControl(): void {
+    if (this.history.isViewingHistory) {
+      this.history.toLive();
+      this.renderHistoryView();
+    }
+    this.pauseGate.toggle();
+  }
+
+  private onStepControl(): void {
+    if (this.pauseGate.isPaused && this.history.forward()) {
+      this.renderHistoryView();
+      return;
+    }
+    this.pauseGate.step();
+  }
+
+  private onBackControl(): void {
+    if (this.pauseGate.isPaused && this.history.back()) {
+      this.renderHistoryView();
+    }
+  }
+
+  private recordFrame(): void {
+    if (!this.engine) return;
+    this.history.record(
+      this.engine.currentGeneration,
+      this.engine.grid,
+      this.p1Score,
+      this.p2Score,
+    );
+    this.updateHistoryDisplay();
+  }
+
+  // Generations are shown per segment (from 0), like the counter itself.
+  private updateHistoryDisplay(): void {
+    const range = this.history.range;
+    const o = this.genDisplayOffset;
+    this.dom.historyRange.textContent = range
+      ? `(${range.oldest - o}–${range.live - o})`
+      : "";
+    this.dom.generationCounter.style.color = this.history.isViewingHistory
+      ? CONFIG.COLOR_REWIND
+      : "";
+    this.dom.backStepBtn.disabled = !this.history.canGoBack;
+  }
+
+  private renderHistoryView(): void {
+    if (!this.renderer) return;
+    const frame = this.history.current();
+    if (this.history.isViewingHistory && frame) {
+      this.renderer.drawGrid(frame.grid);
+      this.dom.generationCounter.textContent = String(
+        frame.generation - this.genDisplayOffset,
+      );
+      this.dom.ownScore.textContent = String(frame.score1);
+      this.dom.opponentScore.textContent = String(frame.score2);
+    } else {
+      this.renderer.drawGrid();
+      this.updateGenerationCounter();
+      this.updateScores();
+    }
+    this.updateHistoryDisplay();
   }
 
   private stopSimulation(): void {

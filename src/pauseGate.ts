@@ -92,6 +92,11 @@ export function isStepKey(e: KeyboardEvent): boolean {
   return e.code === "ArrowRight" && !isTyping(e);
 }
 
+// Left arrow rewinds the view one generation while paused (frameHistory.ts).
+export function isBackKey(e: KeyboardEvent): boolean {
+  return e.code === "ArrowLeft" && !isTyping(e);
+}
+
 function isTyping(e: KeyboardEvent): boolean {
   const tag = (e.target as HTMLElement | null)?.tagName;
   return tag === "INPUT" || tag === "TEXTAREA";

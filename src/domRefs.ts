@@ -34,6 +34,8 @@ export function createDOMRefs() {
     simSkipHint: getElement<HTMLSpanElement>("simSkipHint"),
     pauseBtn: getElement<HTMLButtonElement>("pauseBtn"),
     stepBtn: getElement<HTMLButtonElement>("stepBtn"),
+    backBtn: getElement<HTMLButtonElement>("backBtn"),
+    historyRange: getElement<HTMLSpanElement>("historyRange"),
 
     // Post-game freerun sandbox controls
     freerunBar: getElement<HTMLDivElement>("freerunBar"),
@@ -126,6 +128,8 @@ export function createDOMRefs() {
     puzzleSimSkipHint: getElement<HTMLSpanElement>("puzzleSimSkipHint"),
     puzzlePauseBtn: getElement<HTMLButtonElement>("puzzlePauseBtn"),
     puzzleStepBtn: getElement<HTMLButtonElement>("puzzleStepBtn"),
+    puzzleBackStepBtn: getElement<HTMLButtonElement>("puzzleBackStepBtn"),
+    puzzleHistoryRange: getElement<HTMLSpanElement>("puzzleHistoryRange"),
     puzzleOwnScore: getElement<HTMLSpanElement>("puzzleOwnScore"),
     puzzleOpponentScore: getElement<HTMLSpanElement>("puzzleOpponentScore"),
     puzzleCanvas: getElement<HTMLCanvasElement>("puzzleCanvas"),

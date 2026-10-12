@@ -18,6 +18,10 @@ export const CONFIG = {
 
   // Animation (will be used by simulation in Checkpoint C)
   FPS_FAST: 12,
+  // How far a paused simulation can be rewound (view only, see
+  // frameHistory.ts). A short window answers "what just happened" without
+  // letting the player get lost in history; memory is not the limit.
+  REWIND_GENERATIONS: 20,
 
   // Colors
   COLOR_PLAYER1: "#44dddd",
@@ -30,6 +34,7 @@ export const CONFIG = {
   COLOR_ZONE_SCORE: "#443300",
   COLOR_GRID_LINE: "#222",
   COLOR_ZONE_BORDER: "#666",
+  COLOR_REWIND: "#66ccff", // generation counter while showing a rewound frame
 
   // Score bucket aggregation (delays score crediting so the displayed
   // "+N" floating text matches the actual point award)

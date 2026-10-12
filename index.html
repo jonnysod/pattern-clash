@@ -133,7 +133,28 @@
             Phase <span id="phaseCounter">1</span> /
             <span id="totalPhases">5</span>
             &nbsp;·&nbsp; Generation:
-            <span id="generationCounter">0</span> /
+            <span id="generationCounter"
+              style="
+                display: inline-block;
+                min-width: 3ch;
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+              "
+              >0</span
+            >
+            <span
+              id="historyRange"
+              title="Rewind range — Resume returns to the live generation"
+              style="
+                display: none;
+                min-width: 9ch;
+                margin-left: 4px;
+                font-size: 12px;
+                color: #888;
+                font-variant-numeric: tabular-nums;
+              "
+            ></span>
+            /
             <span id="maxGenerations">150</span>
             <span
               id="simSkipHint"
@@ -156,6 +177,23 @@
               "
             >
               ⏸ Pause
+            </button>
+            <button
+              id="backBtn"
+              title="One generation back (←)"
+              style="
+                display: none;
+                margin-left: 4px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              ⏮ −1
             </button>
             <button
               id="stepBtn"
@@ -942,7 +980,28 @@
           ></p>
           <div style="font-size: 13px; color: #aaa; margin-top: 8px">
             Generation:
-            <span id="puzzleGenerationCounter">0</span> /
+            <span id="puzzleGenerationCounter"
+              style="
+                display: inline-block;
+                min-width: 3ch;
+                text-align: right;
+                font-variant-numeric: tabular-nums;
+              "
+              >0</span
+            >
+            <span
+              id="puzzleHistoryRange"
+              title="Rewind range — Resume returns to the live generation"
+              style="
+                display: none;
+                min-width: 9ch;
+                margin-left: 4px;
+                font-size: 12px;
+                color: #888;
+                font-variant-numeric: tabular-nums;
+              "
+            ></span>
+            /
             <span id="puzzleMaxGenerations">0</span>
             <span
               id="puzzleSimSkipHint"
@@ -965,6 +1024,23 @@
               "
             >
               ⏸ Pause
+            </button>
+            <button
+              id="puzzleBackStepBtn"
+              title="One generation back (←)"
+              style="
+                display: none;
+                margin-left: 4px;
+                padding: 2px 10px;
+                font-size: 12px;
+                background-color: #333;
+                color: #ddd;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              ⏮ −1
             </button>
             <button
               id="puzzleStepBtn"

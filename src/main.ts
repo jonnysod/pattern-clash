@@ -131,6 +131,8 @@ function buildPuzzleDOMRefs(): PuzzleDOMRefs {
     simSkipHint: dom.puzzleSimSkipHint,
     pauseBtn: dom.puzzlePauseBtn,
     stepBtn: dom.puzzleStepBtn,
+    backStepBtn: dom.puzzleBackStepBtn,
+    historyRange: dom.puzzleHistoryRange,
     ownScore: dom.puzzleOwnScore,
     opponentScore: dom.puzzleOpponentScore,
     resultOverlay: dom.puzzleResultOverlay,
