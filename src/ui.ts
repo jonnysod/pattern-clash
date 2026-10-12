@@ -725,6 +725,27 @@ export class UIController {
   }
   //#endregion
 
+  //#region Placement highlight
+  // Computed from the action, so both online clients highlight the same
+  // cells, and bot placements go through the same path.
+  private highlightPlacement(
+    player: Player,
+    patternIndex: number,
+    row: number,
+    col: number,
+  ): void {
+    const base = PATTERNS[patternIndex];
+    if (!base) return;
+    const cells = getPatternForPlayer(base, player).cells.map(
+      ([r, c]): [number, number] => [row + r, col + c],
+    );
+    this.scoreEffects.highlightPlacement(
+      cells,
+      player === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2,
+    );
+  }
+  //#endregion
+
   //#region Pause / step controls
   private showPauseControls(paused: boolean): void {
     this.dom.pauseBtn.style.display = "inline-block";
@@ -1000,6 +1021,12 @@ export class UIController {
           logWarn("[Sync] placement action rejected:", action);
           return;
         }
+        this.highlightPlacement(
+          action.player,
+          action.patternIndex,
+          action.row,
+          action.col,
+        );
         // Let the bot witness the placement before its next turn begins —
         // beginTurn() below can schedule that turn immediately.
         this.botController?.recordPlacement(

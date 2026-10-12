@@ -22,6 +22,12 @@ export const CONFIG = {
   // frameHistory.ts). A short window answers "what just happened" without
   // letting the player get lost in history; memory is not the limit.
   REWIND_GENERATIONS: 20,
+  // A placed pattern is shown in the placer's colour for this long, then
+  // fades out — a fixed overlay at the placement spot that does not follow
+  // the simulation (cells stay ownerless). Wall-clock time, so it behaves
+  // the same in the place phase, at sim start and while paused.
+  PLACEMENT_HIGHLIGHT_MS: 2000,
+  PLACEMENT_HIGHLIGHT_FADE_MS: 1000,
 
   // Colors
   COLOR_PLAYER1: "#44dddd",

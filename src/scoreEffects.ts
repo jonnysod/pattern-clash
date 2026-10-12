@@ -2,6 +2,10 @@
 // Each ScoreEvent fed in produces one floating text — aggregation
 // already happened upstream in Game.scoreBuckets, so the displayed
 // numbers match the actual point award exactly.
+//
+// The same overlay layer also carries placement highlights (see
+// highlightPlacement): both are short-lived, purely visual, and must stay
+// independent of when the canvas below is redrawn.
 
 import type { ScoreEvent } from "./types.js";
 import { CONFIG } from "./config.js";
@@ -10,7 +14,7 @@ const FLOAT_DURATION = 1500; // ms for float + fade
 const FLOAT_DISTANCE = 40; // px to float upward
 
 interface EffectHandle {
-  element: HTMLDivElement;
+  element: HTMLElement;
   timeoutId: number;
 }
 
@@ -113,6 +117,55 @@ export class ScoreEffects {
       el.remove();
       this.activeEffects.delete(handle);
     }, FLOAT_DURATION);
+    this.activeEffects.add(handle);
+  }
+
+  // Show freshly placed cells in the placer's colour, then fade out. Drawn
+  // on its own small canvas in the overlay layer, so sim ticks, the ghost
+  // preview, pause and rewind can redraw the board without touching it.
+  // Slightly translucent: once the simulation moves the cells away, it
+  // reads as a shadow of the placement rather than as live cells.
+  highlightPlacement(cells: [number, number][], color: string): void {
+    if (cells.length === 0) return;
+    const cs = this.cellSize;
+    const rows = cells.map(([r]) => r);
+    const cols = cells.map(([, c]) => c);
+    const minRow = Math.min(...rows);
+    const minCol = Math.min(...cols);
+
+    const el = document.createElement("canvas");
+    el.width = (Math.max(...cols) - minCol + 1) * cs;
+    el.height = (Math.max(...rows) - minRow + 1) * cs;
+    // The page's global canvas rule adds a border and a black background;
+    // neither belongs on an overlay. The game canvas keeps its border, so
+    // its cells start clientLeft/clientTop px inside the layer's origin.
+    el.style.cssText = `
+      position: absolute;
+      left: ${this.canvas.clientLeft + minCol * cs}px;
+      top: ${this.canvas.clientTop + minRow * cs}px;
+      border: none;
+      background: transparent;
+      opacity: 0.85;
+      z-index: 5;
+    `;
+    const ctx = el.getContext("2d")!;
+    ctx.fillStyle = color;
+    for (const [r, c] of cells) {
+      // Same footprint as Renderer's live cells (cs - 1, 1px grid gap).
+      ctx.fillRect((c - minCol) * cs, (r - minRow) * cs, cs - 1, cs - 1);
+    }
+    this.container.appendChild(el);
+
+    const fadeMs = CONFIG.PLACEMENT_HIGHLIGHT_FADE_MS;
+    const handle: EffectHandle = { element: el, timeoutId: 0 };
+    handle.timeoutId = window.setTimeout(() => {
+      el.style.transition = `opacity ${fadeMs}ms ease-in`;
+      el.style.opacity = "0";
+      handle.timeoutId = window.setTimeout(() => {
+        el.remove();
+        this.activeEffects.delete(handle);
+      }, fadeMs);
+    }, CONFIG.PLACEMENT_HIGHLIGHT_MS);
     this.activeEffects.add(handle);
   }
 
