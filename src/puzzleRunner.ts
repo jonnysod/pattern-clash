@@ -784,7 +784,7 @@ export class PuzzleRunner {
       placementCol,
     );
     this.renderer.drawPlacementPreview(
-      pattern,
+      pattern.cells,
       this.hoverRow,
       placementCol,
       1,

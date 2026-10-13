@@ -28,6 +28,11 @@ export const CONFIG = {
   // the same in the place phase, at sim start and while paused.
   PLACEMENT_HIGHLIGHT_MS: 2000,
   PLACEMENT_HIGHLIGHT_FADE_MS: 1000,
+  // Resting the mouse while placing launches a ghost of the piece playing
+  // out on its own (see hoverGhost.ts). It runs the phase's length, so it
+  // plays faster than the real simulation to keep a loop short.
+  GHOST_DELAY_MS: 1000,
+  GHOST_FPS: 18,
 
   // Colors
   COLOR_PLAYER1: "#44dddd",

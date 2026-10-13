@@ -24,11 +24,41 @@ import { ScoreEffects } from "./scoreEffects.js";
 import { PATTERNS } from "./patterns.js";
 import { getPatternForPlayer, getPlacementCol } from "./patternUtils.js";
 import { CONFIG } from "./config.js";
+import { ghostRun } from "./hoverGhost.js";
 import { PauseGate, isPauseKey, isStepKey, isBackKey } from "./pauseGate.js";
 import { FrameHistory } from "./frameHistory.js";
 import { logInfo, logWarn } from "./logger.js";
 
 export type LocalPlayerMode = Player | "both";
+
+// Just the prohibition sign as the cursor over an invalid spot. The system
+// "not-allowed" cursor on macOS is an arrow with the sign attached, which
+// reads as a second pointer next to the crosshair. Drawn once as a PNG
+// (more widely supported for cursors than SVG), hotspot in the centre;
+// the keyword stays as fallback.
+let notAllowedCursorValue: string | null = null;
+function notAllowedCursor(): string {
+  if (notAllowedCursorValue !== null) return notAllowedCursorValue;
+  const size = 24;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return (notAllowedCursorValue = "not-allowed");
+  const c = size / 2;
+  const radius = 8;
+  // Dark halo first so the sign stays visible on any zone colour.
+  for (const [color, width] of [["rgba(0,0,0,0.8)", 5], ["#ff4444", 2.5]] as const) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.arc(c, c, radius, 0, Math.PI * 2);
+    ctx.moveTo(c - radius * Math.SQRT1_2, c - radius * Math.SQRT1_2);
+    ctx.lineTo(c + radius * Math.SQRT1_2, c + radius * Math.SQRT1_2);
+    ctx.stroke();
+  }
+  notAllowedCursorValue = `url(${canvas.toDataURL()}) ${c} ${c}, not-allowed`;
+  return notAllowedCursorValue;
+}
 
 export class UIController {
   private game: Game;
@@ -52,6 +82,12 @@ export class UIController {
   private selectedCardId: string | null = null;
   private hoverCol: number | null = null;
   private hoverRow: number | null = null;
+  // Hover ghost: the run simulated for the current card and spot, and the
+  // frame shown underneath the placement preview (null = not running).
+  private ghostRunFrames: [number, number][][] = [];
+  private ghostFrame: number | null = null;
+  private ghostDelayTimerId: number | null = null;
+  private ghostFrameTimerId: number | null = null;
 
   // Simulation
   private simTimerId: number | null = null;
@@ -268,6 +304,8 @@ export class UIController {
 
   private cleanup(): void {
     this.stopSimulation();
+    this.stopGhost();
+    this.dom.gameCanvas.style.cursor = "";
     this.stopFreerun();
     this.botController?.stop();
     this.syncManager.stop();
@@ -476,6 +514,7 @@ export class UIController {
   private onCardSelect(cardId: string | null): void {
     this.selectedCardId = cardId;
     this.cardHand.setSelectedCard(cardId);
+    this.restartGhostDelay();
     // Redraw to clear / update preview based on current hover
     this.refreshHoverPreview();
   }
@@ -486,8 +525,13 @@ export class UIController {
     const rect = this.dom.gameCanvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    this.hoverCol = Math.floor(x / this.cellSize);
-    this.hoverRow = Math.floor(y / this.cellSize);
+    const col = Math.floor(x / this.cellSize);
+    const row = Math.floor(y / this.cellSize);
+    // Moving within a cell changes nothing — and mustn't reset the ghost.
+    if (col === this.hoverCol && row === this.hoverRow) return;
+    this.hoverCol = col;
+    this.hoverRow = row;
+    this.restartGhostDelay();
     this.refreshHoverPreview();
   }
 
@@ -495,10 +539,13 @@ export class UIController {
     if (!this.game.isPlacePhase) return;
     this.hoverCol = null;
     this.hoverRow = null;
+    this.stopGhost();
     this.renderer.drawGrid();
   }
 
   private refreshHoverPreview(): void {
+    // "" falls back to the stylesheet's crosshair; set below if invalid.
+    this.dom.gameCanvas.style.cursor = "";
     if (!this.game.isPlacePhase) return;
     if (
       this.selectedCardId === null ||
@@ -533,14 +580,94 @@ export class UIController {
       placementCol,
       this.activePlacer,
     );
+    if (!valid) this.dom.gameCanvas.style.cursor = notAllowedCursor();
+
+    // No ghost for a spot the piece can't be placed on.
+    const flying =
+      this.ghostFrame === null || !valid
+        ? []
+        : (this.ghostRunFrames[this.ghostFrame] ?? []);
     this.renderer.drawPlacementPreview(
-      pattern,
+      pattern.cells,
       this.hoverRow,
       placementCol,
       this.activePlacer,
       valid,
+      flying,
     );
   }
+
+  //#region Hover ghost
+  private static readonly GHOST_LOOP_HOLD_MS = 600;
+
+  // (Re)arm the ghost: it launches once the mouse has rested on one cell for
+  // GHOST_DELAY_MS. Any move to another cell stops it and starts the wait
+  // over, so it never runs while the player is still aiming.
+  private restartGhostDelay(): void {
+    this.stopGhost();
+    if (this.selectedCardId === null || this.hoverRow === null) return;
+    this.ghostDelayTimerId = window.setTimeout(() => {
+      this.ghostDelayTimerId = null;
+      this.playGhost();
+    }, CONFIG.GHOST_DELAY_MS);
+  }
+
+  // Simulated once per launch — the run depends on the spot (distance to
+  // the wall). Frame 0 is the placed shape, which the preview already
+  // shows, so the ghost starts at frame 1, holds its last frame briefly and
+  // relaunches. The relaunch marks where this phase's simulation ends.
+  private playGhost(): void {
+    const card =
+      this.selectedCardId === null
+        ? null
+        : this.game.getCardById(this.activePlacer, this.selectedCardId);
+    const base = card ? PATTERNS[card.patternIndex] : undefined;
+    if (!card || !base || this.hoverRow === null || this.hoverCol === null) {
+      return;
+    }
+    this.ghostRunFrames = ghostRun(
+      card.patternIndex,
+      this.activePlacer,
+      this.hoverRow,
+      getPlacementCol(
+        this.hoverCol,
+        getPatternForPlayer(base, this.activePlacer),
+        this.activePlacer,
+      ),
+      this.game.rows,
+      this.game.cols,
+      this.game.simGenerations,
+    );
+    const last = this.ghostRunFrames.length - 1;
+    if (last < 1) return;
+
+    const tickMs = Math.floor(1000 / CONFIG.GHOST_FPS);
+    const advance = (): void => {
+      const atEnd = this.ghostFrame === last;
+      this.ghostFrame = atEnd || this.ghostFrame === null ? 1 : this.ghostFrame + 1;
+      this.refreshHoverPreview();
+      this.ghostFrameTimerId = window.setTimeout(
+        advance,
+        this.ghostFrame === last ? UIController.GHOST_LOOP_HOLD_MS : tickMs,
+      );
+    };
+    advance();
+  }
+
+  // Back to the static ghost. Safe to call when nothing is running.
+  private stopGhost(): void {
+    if (this.ghostDelayTimerId !== null) {
+      clearTimeout(this.ghostDelayTimerId);
+      this.ghostDelayTimerId = null;
+    }
+    if (this.ghostFrameTimerId !== null) {
+      clearTimeout(this.ghostFrameTimerId);
+      this.ghostFrameTimerId = null;
+    }
+    this.ghostFrame = null;
+    this.ghostRunFrames = [];
+  }
+  //#endregion
 
   private onCanvasClick(e: MouseEvent): void {
     if (!this.game.isPlacePhase) return;
@@ -600,6 +727,8 @@ export class UIController {
   }
 
   private onPlacePhaseDone(): void {
+    this.stopGhost();
+    this.dom.gameCanvas.style.cursor = "";
     logInfo(
       `[Game] Place phase done. Starting simulation for ${this.game.simGenerations} generations.`,
     );
@@ -958,6 +1087,8 @@ export class UIController {
   private onConnectionLost(): void {
     if (this.game.isEnded) return;
     logWarn("[Game] Opponent disconnected — ending game");
+    this.stopGhost();
+    this.dom.gameCanvas.style.cursor = "";
     // Treat as opponent's surrender so local player wins.
     const opponent: Player = this.localPlayer === 1 ? 2 : 1;
     this.game.applySurrender(opponent);
@@ -1010,6 +1141,8 @@ export class UIController {
         break;
 
       case "placement": {
+        // The placed card is gone; whatever is selected next starts fresh.
+        this.stopGhost();
         const ok = this.game.applyPlacement(
           action.player,
           action.cardId,
@@ -1058,6 +1191,9 @@ export class UIController {
 
   //#region Winner Overlay
   private showWinnerOverlay(): void {
+    // Ended mid place phase (surrender) with the mouse on an invalid spot.
+    this.stopGhost();
+    this.dom.gameCanvas.style.cursor = "";
     const result = this.game.getWinner();
     const { winner, player1Score, player2Score } = result;
 

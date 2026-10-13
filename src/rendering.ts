@@ -1,6 +1,6 @@
 // Canvas rendering logic
 
-import type { Pattern, Player, ZoneRect } from "./types.js";
+import type { Player, ZoneRect } from "./types.js";
 import { Zones } from "./zones.js";
 import { CONFIG } from "./config.js";
 
@@ -107,19 +107,55 @@ export class Renderer {
 
   // Draw a ghost preview of a pattern over the current grid.
   // Green = valid placement, red = invalid (wrong zone).
+  // `cells` are offsets from (startRow, startCol). `flying` is the current
+  // frame of the hover ghost in absolute cells, drawn fainter and
+  // underneath, so the preview of where the piece goes stays readable.
+  //
+  // In the placer's colour, like the highlight a placed piece gets — so a
+  // move reads as one colour from preview to placement until it fades to
+  // the uniform green of live cells. Invalid is grey: "not here" rather
+  // than an error, and it can't be mistaken for either player's colour
+  // (red sat too close to P2's magenta).
   drawPlacementPreview(
-    pattern: Pattern,
+    cells: [number, number][],
     startRow: number,
     startCol: number,
     player: Player,
     valid: boolean,
+    flying: [number, number][] = [],
   ): void {
     this.drawGrid();
+    const color = player === 1 ? CONFIG.COLOR_PLAYER1 : CONFIG.COLOR_PLAYER2;
+    this.ctx.save();
+    this.ctx.fillStyle = color;
+    this.ctx.globalAlpha = 0.35;
+    this.forEachPreviewCell(flying, 0, 0, (x, y, size) =>
+      this.ctx.fillRect(x, y, size, size),
+    );
+    if (valid) {
+      this.ctx.globalAlpha = 0.8;
+      this.forEachPreviewCell(cells, startRow, startCol, (x, y, size) =>
+        this.ctx.fillRect(x, y, size, size),
+      );
+    } else {
+      this.ctx.fillStyle = "#999999";
+      this.ctx.globalAlpha = 0.45;
+      this.forEachPreviewCell(cells, startRow, startCol, (x, y, size) =>
+        this.ctx.fillRect(x, y, size, size),
+      );
+    }
+    this.ctx.restore();
+  }
+
+  // Calls `draw` with the pixel box of every on-grid cell.
+  private forEachPreviewCell(
+    cells: [number, number][],
+    startRow: number,
+    startCol: number,
+    draw: (x: number, y: number, size: number) => void,
+  ): void {
     const cs = this.cellSize;
-    this.ctx.fillStyle = valid
-      ? "rgba(0, 255, 0, 0.4)"
-      : "rgba(255, 0, 0, 0.4)";
-    for (const [rowOffset, colOffset] of pattern.cells) {
+    for (const [rowOffset, colOffset] of cells) {
       const row = startRow + rowOffset;
       const col = startCol + colOffset;
       if (
@@ -128,7 +164,7 @@ export class Renderer {
         col >= 0 &&
         col < this.source.cols
       ) {
-        this.ctx.fillRect(col * cs, row * cs, cs - 1, cs - 1);
+        draw(col * cs, row * cs, cs - 1);
       }
     }
   }
