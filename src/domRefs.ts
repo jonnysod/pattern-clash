@@ -77,6 +77,7 @@ export function createDOMRefs() {
     winnerOverlay: getElement<HTMLDivElement>("winnerOverlay"),
     winnerTitle: getElement<HTMLHeadingElement>("winnerTitle"),
     winnerScore: getElement<HTMLParagraphElement>("winnerScore"),
+    winnerHighscore: getElement<HTMLParagraphElement>("winnerHighscore"),
     showBoardBtn: getElement<HTMLButtonElement>("showBoardBtn"),
     restartBtn: getElement<HTMLButtonElement>("restartBtn"),
 
@@ -111,6 +112,14 @@ export function createDOMRefs() {
     // Lobby: Tutorial (puzzle) entry point
     tutorialBtn: getElement<HTMLButtonElement>("tutorialBtn"),
 
+    // Global highscores
+    highscoresBtn: getElement<HTMLButtonElement>("highscoresBtn"),
+    highscoresOverlay: getElement<HTMLDivElement>("highscoresOverlay"),
+    highscoresContent: getElement<HTMLDivElement>("highscoresContent"),
+    highscoresName: getElement<HTMLSpanElement>("highscoresName"),
+    highscoresRenameBtn: getElement<HTMLButtonElement>("highscoresRenameBtn"),
+    highscoresBackBtn: getElement<HTMLButtonElement>("highscoresBackBtn"),
+
     // Puzzle selection overlay
     puzzleSelectOverlay: getElement<HTMLDivElement>("puzzleSelectOverlay"),
     puzzleList: getElement<HTMLDivElement>("puzzleList"),
@@ -139,6 +148,9 @@ export function createDOMRefs() {
     puzzleResultOverlay: getElement<HTMLDivElement>("puzzleResultOverlay"),
     puzzleResultTitle: getElement<HTMLHeadingElement>("puzzleResultTitle"),
     puzzleResultText: getElement<HTMLParagraphElement>("puzzleResultText"),
+    puzzleResultHighscore: getElement<HTMLParagraphElement>(
+      "puzzleResultHighscore",
+    ),
     puzzleRetryBtn: getElement<HTMLButtonElement>("puzzleRetryBtn"),
     puzzleBackBtn: getElement<HTMLButtonElement>("puzzleBackBtn"),
   };

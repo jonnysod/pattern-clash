@@ -24,6 +24,17 @@ import type { PuzzleDOMRefs } from "./puzzleRunner.js";
 import { PUZZLES } from "./puzzles.js";
 import type { PuzzleDefinition } from "./types.js";
 import { getBestScore, isSolved } from "./puzzleHighscores.js";
+import {
+  HighscoresView,
+  fillPuzzleHighscore,
+  recordHighscore,
+} from "./highscoresUi.js";
+import {
+  LEADERBOARD_BOARDS,
+  botBoardId,
+  puzzleBoard,
+  puzzleBoardScore,
+} from "./leaderboardBoards.js";
 
 //#region Initialization
 const dom = createDOMRefs();
@@ -91,6 +102,18 @@ function startBotGame(level: BotDifficultyLevel): void {
     uiController = null;
     showLobby();
   };
+  // Regular finishes only: a surrender (either side) isn't a result worth
+  // ranking. Quitting to the menu never reaches onGameEnded at all.
+  uiController.onGameEnded = () => {
+    if (game.surrenderedPlayer !== null) return;
+    const board = LEADERBOARD_BOARDS.find((b) => b.id === botBoardId(level));
+    if (!board) return;
+    void recordHighscore(
+      board,
+      game.scorePlayer1 - game.scorePlayer2,
+      dom.winnerHighscore,
+    );
+  };
 }
 
 function showLobby(): void {
@@ -101,6 +124,8 @@ function showLobby(): void {
   }
   showLobbySection("lobbyModeSelect");
   dom.startOverlay.style.display = "flex";
+  // The winner overlay is reused by the next game; drop the last result.
+  dom.winnerHighscore.style.display = "none";
 }
 
 function showLobbySection(sectionId: string): void {
@@ -143,15 +168,6 @@ function buildPuzzleDOMRefs(): PuzzleDOMRefs {
   };
 }
 
-function bestScoreLabel(puzzle: PuzzleDefinition): string {
-  if (!isSolved(puzzle.id)) return "";
-  const best = getBestScore(puzzle.id);
-  if (best === null) return "✓";
-  const isBinary =
-    puzzle.criteria.maxOpponentScore !== undefined && puzzle.criteria.maxOpponentScore === 0;
-  return isBinary ? "✓" : `✓ Best: ${best}`;
-}
-
 function showPuzzleSelect(): void {
   dom.startOverlay.style.display = "none";
   dom.puzzleSelectOverlay.style.display = "flex";
@@ -172,7 +188,7 @@ function showPuzzleSelect(): void {
 
     const indicator = document.createElement("span");
     indicator.style.cssText = "font-size: 13px; color: #aaa; min-height: 18px;";
-    indicator.textContent = bestScoreLabel(puzzle);
+    fillPuzzleHighscore(puzzle, getBestScore(puzzle.id), isSolved(puzzle.id), indicator);
 
     item.appendChild(btn);
     item.appendChild(indicator);
@@ -192,6 +208,15 @@ function startPuzzle(puzzle: PuzzleDefinition): void {
     puzzleRunner.onExit = () => {
       dom.puzzleScreen.style.display = "none";
       showPuzzleSelect();
+    };
+    puzzleRunner.onResult = (solvedPuzzle, success, p1Score, p2Score) => {
+      dom.puzzleResultHighscore.style.display = "none";
+      if (!success) return;
+      void recordHighscore(
+        puzzleBoard(solvedPuzzle),
+        puzzleBoardScore(solvedPuzzle, p1Score, p2Score),
+        dom.puzzleResultHighscore,
+      );
     };
   }
 
@@ -360,6 +385,16 @@ dom.lobbyBackBtn2.addEventListener("click", () => {
 });
 dom.lobbyBackBtn3.addEventListener("click", () => {
   showLobbySection("lobbyOnlineChoice");
+});
+
+// Global highscores
+const highscoresView = new HighscoresView(dom);
+highscoresView.onBack = () => {
+  dom.startOverlay.style.display = "flex";
+};
+dom.highscoresBtn.addEventListener("click", () => {
+  dom.startOverlay.style.display = "none";
+  highscoresView.show();
 });
 
 // Puzzle routing

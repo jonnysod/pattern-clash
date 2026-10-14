@@ -207,6 +207,12 @@ export class PuzzleRunner {
   // Called when the player navigates back to the puzzle select screen.
   onExit: (() => void) | null = null;
 
+  // Called once per finished run, solved or not (main.ts enters solved runs
+  // in the global highscores).
+  onResult:
+    | ((puzzle: PuzzleDefinition, success: boolean, p1Score: number, p2Score: number) => void)
+    | null = null;
+
   constructor(dom: PuzzleDOMRefs) {
     this.dom = dom;
 
@@ -846,6 +852,7 @@ export class PuzzleRunner {
     this.dom.resultOverlay.style.display = "flex";
     this.dom.doneBtn.style.display = "none";
     logInfo(`[Puzzle] result: ${display.success ? "success" : "failure"} — p1=${this.p1Score} p2=${this.p2Score}`);
+    this.onResult?.(this.puzzle, display.success, this.p1Score, this.p2Score);
   }
 
   // Exposed for tests (headless evaluation without rendering)

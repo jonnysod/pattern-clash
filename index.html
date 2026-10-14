@@ -565,6 +565,24 @@
           >
             Online Game (disabled)
           </button>
+          <br />
+          <button
+            id="highscoresBtn"
+            style="
+              padding: 15px 40px;
+              font-size: 20px;
+              background-color: #ffcc44;
+              color: #1a1a1a;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-weight: bold;
+              margin: 5px;
+              width: 250px;
+            "
+          >
+            Highscores
+          </button>
         </div>
 
         <!-- Kept in DOM so domRefs resolves; hidden while online is off -->
@@ -850,6 +868,15 @@
         >
           Score: 0 — 0
         </p>
+        <p
+          id="winnerHighscore"
+          style="
+            display: none;
+            font-size: 16px;
+            color: #66ccff;
+            margin: -18px 0 26px 0;
+          "
+        ></p>
         <button
           id="showBoardBtn"
           style="
@@ -879,6 +906,92 @@
         >
           Restart Game
         </button>
+      </div>
+    </div>
+
+    <!-- Global highscores overlay (content rendered by highscoresView.ts) -->
+    <div
+      id="highscoresOverlay"
+      style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <div
+        style="
+          background-color: #2a2a2a;
+          padding: 30px 40px;
+          border-radius: 10px;
+          width: 760px;
+          max-height: 90vh;
+          overflow-y: auto;
+        "
+      >
+        <h2 style="margin: 0 0 4px 0; color: #ffcc44; text-align: center">
+          Highscores · vs Bot
+        </h2>
+        <p
+          style="
+            margin: 0 0 20px 0;
+            font-size: 13px;
+            color: #888;
+            text-align: center;
+          "
+        >
+          Best score difference (you − bot) per difficulty
+        </p>
+        <div id="highscoresContent"></div>
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 18px;
+            font-size: 14px;
+            color: #aaa;
+          "
+        >
+          <span>
+            Your name: <span id="highscoresName" style="color: #ddd"></span>
+            <button
+              id="highscoresRenameBtn"
+              style="
+                margin-left: 8px;
+                padding: 4px 10px;
+                font-size: 12px;
+                background-color: transparent;
+                color: #aaa;
+                border: 1px solid #555;
+                border-radius: 4px;
+                cursor: pointer;
+              "
+            >
+              Change
+            </button>
+          </span>
+          <button
+            id="highscoresBackBtn"
+            style="
+              padding: 8px 20px;
+              font-size: 14px;
+              background-color: #444;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+            "
+          >
+            ← Back
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1131,6 +1244,15 @@
             id="puzzleResultText"
             style="font-size: 18px; color: #aaa; margin: 0 0 30px 0"
           ></p>
+          <p
+            id="puzzleResultHighscore"
+            style="
+              display: none;
+              font-size: 15px;
+              color: #66ccff;
+              margin: -20px 0 26px 0;
+            "
+          ></p>
           <button
             id="puzzleRetryBtn"
             style="
@@ -1169,7 +1291,8 @@
       {
         "imports": {
           "firebase/app": "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
-          "firebase/database": "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js"
+          "firebase/database": "https://www.gstatic.com/firebasejs/11.0.2/firebase-database.js",
+          "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js"
         }
       }
     </script>
