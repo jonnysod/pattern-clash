@@ -96,6 +96,37 @@
 
         "$other": { ".validate": false }
       }
+    },
+
+    "leaderboards": {
+      "$board": {
+        ".read": "$board.matches(/^(bot-[1-4]|puzzle-[a-z0-9-]{1,40})$/)",
+        ".indexOn": ["score"],
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid && $board.matches(/^(bot-[1-4]|puzzle-[a-z0-9-]{1,40})$/)",
+          ".validate": "newData.hasChildren(['name', 'score', 'at'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9ÄÖÜäöüß _-]{3,16}$/)"
+          },
+          "score": {
+            ".validate": "newData.isNumber() && newData.val() >= -100000 && newData.val() <= 100000"
+          },
+          "at": {
+            ".validate": "newData.isNumber() && newData.val() >= now - 60000 && newData.val() <= now + 60000"
+          },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
+    "puzzleSolved": {
+      "$puzzle": {
+        ".read": "$puzzle.matches(/^[a-z0-9-]{1,40}$/)",
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid && $puzzle.matches(/^[a-z0-9-]{1,40}$/)",
+          ".validate": "newData.isBoolean() && newData.val() == true"
+        }
+      }
     }
   }
 }
