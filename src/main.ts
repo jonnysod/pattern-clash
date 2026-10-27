@@ -415,11 +415,15 @@ dom.puzzleRetryBtn.addEventListener("click", () => {
     logInfo(`[Puzzle] retrying: ${currentPuzzle.id}`);
   }
 });
-dom.puzzleBackBtn.addEventListener("click", () => {
+// Two ways out: the result overlay's button, and one that is always visible
+// so a running puzzle can be left without finishing it.
+function exitPuzzle(): void {
   puzzleRunner?.stop();
   dom.puzzleScreen.style.display = "none";
   showPuzzleSelect();
-});
+}
+dom.puzzleBackBtn.addEventListener("click", exitPuzzle);
+dom.puzzleExitBtn.addEventListener("click", exitPuzzle);
 //#endregion
 
 logInfo("[Game] Pattern Clash ready");

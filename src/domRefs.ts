@@ -127,6 +127,7 @@ export function createDOMRefs() {
 
     // Puzzle screen
     puzzleScreen: getElement<HTMLDivElement>("puzzleScreen"),
+    puzzleExitBtn: getElement<HTMLButtonElement>("puzzleExitBtn"),
     puzzleTitle: getElement<HTMLHeadingElement>("puzzleTitle"),
     puzzleObjective: getElement<HTMLParagraphElement>("puzzleObjective"),
     puzzleHint: getElement<HTMLParagraphElement>("puzzleHint"),
