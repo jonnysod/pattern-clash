@@ -62,12 +62,16 @@ export async function recordHighscore(
     }
     const result = await submitScore(board, name, score);
     const standing = await fetchStanding(board, 1);
-    const rank = standing.own ? `#${standing.own.rank}` : "";
-    show(
-      result === "new-best"
-        ? `🌍 New global best: ${rank} on ${board.title}`
-        : `🌍 Your global best stays ${rank} on ${board.title}`,
-    );
+    const parts: string[] = [];
+    // Puzzles already say "New best!" in the local result line above.
+    if (result === "new-best" && board.group === "bot") parts.push("New personal best");
+    const world = standing.top[0];
+    if (world) {
+      const where = board.group === "bot" ? ` on ${board.title}` : "";
+      parts.push(`World best ${formatScore(board, world.score)}${where}`);
+    }
+    if (standing.own) parts.push(`Your rank #${standing.own.rank}`);
+    show(`🌍 ${parts.join(" · ")}`);
   } catch (err) {
     logWarn("[Highscores] submit failed", err);
     show("Global highscores unavailable right now.");

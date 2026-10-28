@@ -196,6 +196,15 @@ function showPuzzleSelect(): void {
   }
 }
 
+// The same line as under the puzzle in the selection list. A fresh element
+// per call: a world value still loading for an earlier puzzle or run then
+// lands in a detached node instead of overwriting the current line.
+function showPuzzleScoreLine(puzzle: PuzzleDefinition): void {
+  const line = document.createElement("span");
+  dom.puzzleScoreLine.replaceChildren(line);
+  fillPuzzleHighscore(puzzle, getBestScore(puzzle.id), isSolved(puzzle.id), line);
+}
+
 function startPuzzle(puzzle: PuzzleDefinition): void {
   currentPuzzle = puzzle;
   dom.puzzleSelectOverlay.style.display = "none";
@@ -216,10 +225,14 @@ function startPuzzle(puzzle: PuzzleDefinition): void {
         puzzleBoard(solvedPuzzle),
         puzzleBoardScore(solvedPuzzle, p1Score, p2Score),
         dom.puzzleResultHighscore,
-      );
+      ).then(() => {
+        // The entry may have moved the world best or the solved count.
+        if (currentPuzzle === solvedPuzzle) showPuzzleScoreLine(solvedPuzzle);
+      });
     };
   }
 
+  showPuzzleScoreLine(puzzle);
   puzzleRunner.start(puzzle);
   logInfo(`[Puzzle] started: ${puzzle.id}`);
 }
@@ -411,6 +424,7 @@ dom.puzzleDoneBtn.addEventListener("click", () => {
 dom.puzzleRetryBtn.addEventListener("click", () => {
   if (currentPuzzle && puzzleRunner) {
     // start() already hides the result overlay — no pre-hide needed.
+    showPuzzleScoreLine(currentPuzzle);
     puzzleRunner.start(currentPuzzle);
     logInfo(`[Puzzle] retrying: ${currentPuzzle.id}`);
   }
