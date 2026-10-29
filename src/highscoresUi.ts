@@ -25,6 +25,25 @@ function formatScore(board: LeaderboardBoard, score: number): string {
   return board.group === "bot" && score > 0 ? `+${score}` : String(score);
 }
 
+// A highscore line is joined from parts; the player's own values are blue,
+// everything about the world stays in the line's grey — the same meaning
+// blue has on the Highscores page.
+interface LinePart {
+  text: string;
+  own?: boolean;
+}
+
+function renderLine(el: HTMLElement, parts: LinePart[]): void {
+  el.replaceChildren();
+  parts.forEach((part, i) => {
+    if (i > 0) el.append(" · ");
+    const span = document.createElement("span");
+    span.textContent = part.text;
+    if (part.own) span.style.color = OWN_COLOR;
+    el.append(span);
+  });
+}
+
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
@@ -40,8 +59,8 @@ export async function recordHighscore(
   score: number,
   status: HTMLElement,
 ): Promise<void> {
-  const show = (text: string): void => {
-    status.textContent = text;
+  const show = (parts: LinePart[]): void => {
+    renderLine(status, parts);
     status.style.display = "block";
   };
   try {
@@ -49,7 +68,7 @@ export async function recordHighscore(
     if (!name) {
       name = await promptPlayerName(null);
       if (!name) {
-        show("Not entered in the global highscores (no name set).");
+        show([{ text: "Not entered in the global highscores (no name set)." }]);
         return;
       }
       await setPlayerName(name);
@@ -57,24 +76,33 @@ export async function recordHighscore(
     if (board.kind === "solved") {
       await markSolved(board);
       const count = await fetchSolvedCount(board);
-      show(`🌍 Solved by ${count} player${count === 1 ? "" : "s"} worldwide`);
+      show([{ text: `🌍 Solved by ${count} player${count === 1 ? "" : "s"} worldwide` }]);
       return;
     }
     const result = await submitScore(board, name, score);
     const standing = await fetchStanding(board, 1);
-    const parts: string[] = [];
+    const parts: LinePart[] = [];
     // Puzzles already say "New best!" in the local result line above.
-    if (result === "new-best" && board.group === "bot") parts.push("New personal best");
+    if (result === "new-best" && board.group === "bot") {
+      parts.push({ text: "New personal best", own: true });
+    }
     const world = standing.top[0];
+    // Rank counts strictly better entries, so a tie for first is rank 1 too.
+    const holdsWorldBest = standing.own?.rank === 1;
     if (world) {
       const where = board.group === "bot" ? ` on ${board.title}` : "";
-      parts.push(`World best ${formatScore(board, world.score)}${where}`);
+      const best = `World best ${formatScore(board, world.score)}${where}`;
+      parts.push(holdsWorldBest ? { text: `${best} — that's you`, own: true } : { text: best });
     }
-    if (standing.own) parts.push(`Your rank #${standing.own.rank}`);
-    show(`🌍 ${parts.join(" · ")}`);
+    if (standing.own && !holdsWorldBest) {
+      parts.push({ text: `Your rank #${standing.own.rank}`, own: true });
+    }
+    const first = parts[0];
+    if (first) first.text = `${holdsWorldBest ? "🏆" : "🌍"} ${first.text}`;
+    show(parts);
   } catch (err) {
     logWarn("[Highscores] submit failed", err);
-    show("Global highscores unavailable right now.");
+    show([{ text: "Global highscores unavailable right now." }]);
   }
 }
 //#endregion
@@ -94,11 +122,13 @@ export function fillPuzzleHighscore(
     const render = (count: number | null): void => {
       // No count yet, or nobody entered it: say nothing rather than "by 0".
       const by = count ? `by ${count} player${count === 1 ? "" : "s"}` : "";
-      el.textContent = solvedLocally
-        ? `✓ Solved${by ? ` · ${by}` : ""}`
+      const parts: LinePart[] = solvedLocally
+        ? [{ text: "✓ Solved", own: true }]
         : count
-          ? `Solved ${by}`
-          : "";
+          ? [{ text: `Solved ${by}` }]
+          : [];
+      if (solvedLocally && by) parts.push({ text: by });
+      renderLine(el, parts);
     };
     render(null);
     fetchSolvedCount(board).then(render, (err) => {
@@ -110,12 +140,15 @@ export function fillPuzzleHighscore(
   // "error" = couldn't load (offline) — then the world part is left out
   // rather than looking like an empty board.
   const render = (world: number | null | undefined | "error"): void => {
-    const parts: string[] = [];
-    if (solvedLocally && localBest !== null) parts.push(`You ${localBest}`);
-    if (world === undefined) parts.push("World …");
-    else if (world === null) parts.push("World –");
-    else if (world !== "error") parts.push(`World ${world}`);
-    el.textContent = parts.join(" · ");
+    const parts: LinePart[] = [];
+    if (solvedLocally && localBest !== null) parts.push({ text: `You ${localBest}`, own: true });
+    if (world === undefined) parts.push({ text: "World …" });
+    else if (world === null) parts.push({ text: "World –" });
+    // Equal to your own best: you hold it (or share it).
+    else if (world !== "error" && solvedLocally && world === localBest) {
+      parts.push({ text: "🏆 World best", own: true });
+    } else if (world !== "error") parts.push({ text: `World ${world}` });
+    renderLine(el, parts);
   };
   render(undefined);
   fetchBest(board).then(render, (err) => {
